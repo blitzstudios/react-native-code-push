@@ -1,0 +1,118 @@
+{
+  "name": "react-native-restart-newarch",
+  "version": "1.0.82",
+  "description": "Restart the app for new architecture",
+  "license": "MIT",
+  "source": "src/index.ts",
+  "main": "./lib/commonjs/index.js",
+  "react-native": "src/index.ts",
+  "module": "./lib/module/index.js",
+  "types": "lib/typescript/src/index.d.ts",
+  "scripts": {
+    "typecheck": "tsc --noEmit --project tsconfig.test.json",
+    "test": "jest",
+    "build": "bob build",
+    "lint": "eslint .",
+    "prepare": "yarn build"
+  },
+  "keywords": [
+    "react-native",
+    "restart",
+    "react-native-restart-newarch",
+    "react-native-restart",
+    "newarch",
+    "android",
+    "ios",
+    "native"
+  ],
+  "files": [
+    "src",
+    "lib",
+    "android",
+    "ios",
+    "cpp",
+    "*.podspec",
+    "!ios/build",
+    "!android/build",
+    "!android/gradle",
+    "!android/gradlew",
+    "!android/gradlew.bat",
+    "!android/local.properties",
+    "!**/__tests__",
+    "!**/__fixtures__",
+    "!**/__mocks__",
+    "!**/.*",
+    "!ios/generated"
+  ],
+  "workspaces": [
+    "example"
+  ],
+  "author": "Ahmed Awad",
+  "peerDependencies": {
+    "react-native": ">=0.60.0"
+  },
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org/"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ahmedawaad1804/react-native-restart-newarch.git"
+  },
+  "homepage": "https://github.com/ahmedawaad1804/react-native-restart-newarch",
+  "readme": "https://github.com/ahmedawaad1804/react-native-restart-newarch#readme",
+  "bugs": {
+    "url": "https://github.com/ahmedawaad1804/react-native-restart-newarch/issues"
+  },
+  "codegenConfig": {
+    "name": "RNRestartSpec",
+    "type": "modules",
+    "jsSrcsDir": "./src",
+    "android": {
+      "javaPackageName": "com.restartnewarch"
+    }
+  },
+  "devDependencies": {
+    "@babel/core": "^7.25.2",
+    "@babel/preset-env": "^7.25.3",
+    "@babel/preset-react": "^7.24.7",
+    "@babel/runtime": "^7.21.0",
+    "@eslint/js": "^9.37.0",
+    "@react-native/eslint-config": "^0.74.86",
+    "@types/jest": "^29.5.12",
+    "@types/node": "^22.1.0",
+    "@types/react": "^18.0.28",
+    "@types/react-native": "^0.71.3",
+    "@typescript-eslint/eslint-plugin": "^8.45.0",
+    "@typescript-eslint/parser": "^8.45.0",
+    "babel-jest": "^29.7.0",
+    "eslint": "^9.37.0",
+    "eslint-config-prettier": "^9.1.0",
+    "eslint-plugin-prettier": "^5.2.1",
+    "eslint-plugin-react": "^7.37.5",
+    "eslint-plugin-react-hooks": "^6.1.1",
+    "eslint-plugin-react-native": "^5.0.0",
+    "globals": "^16.4.0",
+    "jest": "^29.7.0",
+    "prettier": "^2.8.5",
+    "react-native": "^0.74.4",
+    "react-native-builder-bob": "^0.29.1",
+    "ts-jest": "^29.2.4",
+    "tslib": "^2.6.3",
+    "turbo": "^2.0.11",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.0.0"
+  },
+  "packageManager": "yarn@3.6.4",
+  "resolutions": {
+    "@types/react": "^18.2.44"
+  },
+  "react-native-builder-bob": {
+    "source": "src",
+    "output": "lib",
+    "targets": [
+      "commonjs",
+      "module",
+      "typescript"
+    ]
+  }
+}
