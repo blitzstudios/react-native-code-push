@@ -12,6 +12,7 @@ static NSString *const StatusFile = @"codepush.json";
 static NSString *const UpdateBundleFileName = @"app.jsbundle";
 static NSString *const UpdateMetadataFileName = @"app.json";
 static NSString *const UnzippedFolderName = @"unzipped";
+static NSString *ServiceName = @"";
 
 #pragma mark - Public methods
 
@@ -340,9 +341,15 @@ static NSString *const UnzippedFolderName = @"unzipped";
     [downloadHandler download:updatePackage[@"downloadUrl"]];
 }
 
++ (void)setServiceName:(NSString *)serviceName
+{
+    ServiceName = serviceName;
+}
+
 + (NSString *)getCodePushPath
 {
-    NSString* codePushPath = [[CodePush getApplicationSupportDirectory] stringByAppendingPathComponent:@"CodePush"];
+    NSString* codePushPath = [[CodePush getApplicationSupportDirectory] 
+                                stringByAppendingPathComponent:[NSString stringWithFormat:@"CodePush/%@", ServiceName]];
     if ([CodePush isUsingTestConfiguration]) {
         codePushPath = [codePushPath stringByAppendingPathComponent:@"TestPackages"];
     }

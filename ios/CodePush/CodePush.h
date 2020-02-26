@@ -151,6 +151,7 @@ failCallback:(void (^)(NSError *err))failCallback;
 + (NSString *)getCurrentPackageFolderPath:(NSError **)error;
 + (NSString *)getCurrentPackageBundlePath:(NSError **)error;
 + (NSString *)getCurrentPackageHash:(NSError **)error;
++ (void)setServiceName:(NSString *)serviceName;
 
 + (NSDictionary *)getPackage:(NSString *)packageHash
                        error:(NSError **)error;

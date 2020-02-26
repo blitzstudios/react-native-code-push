@@ -152,6 +152,7 @@ static NSString *const LatestRollbackCountKey = @"count";
     bundleResourceSubdirectory = resourceSubdirectory;
     bundleResourceBundle = resourceBundle;
 
+    [CodePushPackage setServiceName:[resourceName componentsSeparatedByString:@"."][1]];
     [self ensureBinaryBundleExists];
 
     NSString *logMessageFormat = @"Loading JS bundle from %@";
