@@ -12,16 +12,15 @@ static NSString *const StatusFile = @"codepush.json";
 static NSString *const UpdateBundleFileName = @"app.jsbundle";
 static NSString *const UpdateMetadataFileName = @"app.json";
 static NSString *const UnzippedFolderName = @"unzipped";
-static NSString *ServiceName = @"";
 
 #pragma mark - Public methods
 
-+ (void)clearUpdates
++ (void)clearUpdates:(NSString *)resourceName
 {
-    [[NSFileManager defaultManager] removeItemAtPath:[self getCodePushPath] error:nil];
+    [[NSFileManager defaultManager] removeItemAtPath:[self getCodePushPath:resourceName] error:nil];
 }
 
-+ (void)downloadAndReplaceCurrentBundle:(NSString *)remoteBundleUrl
++ (void)downloadAndReplaceCurrentBundle:(NSString *)remoteBundleUrl resourceName:(NSString *)resourceName
 {
     NSURL *urlRequest = [NSURL URLWithString:remoteBundleUrl];
     NSError *error = nil;
@@ -32,7 +31,7 @@ static NSString *ServiceName = @"";
     if (error) {
         CPLog(@"Error downloading from URL %@", remoteBundleUrl);
     } else {
-        NSString *currentPackageBundlePath = [self getCurrentPackageBundlePath:&error];
+        NSString *currentPackageBundlePath = [self getCurrentPackageBundlePath:&error resourceName:resourceName];
         [downloadedBundle writeToFile:currentPackageBundlePath
                            atomically:YES
                              encoding:NSUTF8StringEncoding
@@ -42,6 +41,7 @@ static NSString *ServiceName = @"";
 
 + (void)downloadPackage:(NSDictionary *)updatePackage
  expectedBundleFileName:(NSString *)expectedBundleFileName
+           resourceName:(NSString *)resourceName
               publicKey:(NSString *)publicKey
          operationQueue:(dispatch_queue_t)operationQueue
        progressCallback:(void (^)(long long, long long))progressCallback
@@ -49,7 +49,7 @@ static NSString *ServiceName = @"";
            failCallback:(void (^)(NSError *err))failCallback
 {
     NSString *newUpdateHash = updatePackage[@"packageHash"];
-    NSString *newUpdateFolderPath = [self getPackageFolderPath:newUpdateHash];
+    NSString *newUpdateFolderPath = [self getPackageFolderPath:newUpdateHash resourceName:resourceName];
     NSString *newUpdateMetadataPath = [newUpdateFolderPath stringByAppendingPathComponent:UpdateMetadataFileName];
     NSError *error;
     
@@ -58,15 +58,15 @@ static NSString *ServiceName = @"";
         // uncleared due to a crash or error during the download or install process.
         [[NSFileManager defaultManager] removeItemAtPath:newUpdateFolderPath
                                                    error:&error];
-    } else if (![[NSFileManager defaultManager] fileExistsAtPath:[self getCodePushPath]]) {
-        [[NSFileManager defaultManager] createDirectoryAtPath:[self getCodePushPath]
+    } else if (![[NSFileManager defaultManager] fileExistsAtPath:[self getCodePushPath:resourceName]]) {
+        [[NSFileManager defaultManager] createDirectoryAtPath:[self getCodePushPath:resourceName]
                                   withIntermediateDirectories:YES
                                                    attributes:nil
                                                         error:&error];
                                                         
         // Ensure that none of the CodePush updates we store on disk are
         // ever included in the end users iTunes and/or iCloud backups
-        NSURL *codePushURL = [NSURL fileURLWithPath:[self getCodePushPath]];
+        NSURL *codePushURL = [NSURL fileURLWithPath:[self getCodePushPath:resourceName]];
         [codePushURL setResourceValue:@YES forKey:NSURLIsExcludedFromBackupKey error:nil];
     }
     
@@ -74,7 +74,7 @@ static NSString *ServiceName = @"";
         return failCallback(error);
     }
     
-    NSString *downloadFilePath = [self getDownloadFilePath];
+    NSString *downloadFilePath = [self getDownloadFilePath:resourceName];
     NSString *bundleFilePath = [newUpdateFolderPath stringByAppendingPathComponent:UpdateBundleFileName];
     
     CodePushDownloadHandler *downloadHandler = [[CodePushDownloadHandler alloc]
@@ -83,7 +83,7 @@ static NSString *ServiceName = @"";
                                                 progressCallback:progressCallback
                                                 doneCallback:^(BOOL isZip) {
                                                     NSError *error = nil;
-                                                    NSString * unzippedFolderPath = [CodePushPackage getUnzippedFolderPath];
+        NSString * unzippedFolderPath = [CodePushPackage getUnzippedFolderPath:resourceName];
                                                     NSMutableDictionary * mutableUpdatePackage = [updatePackage mutableCopy];
                                                     if (isZip) {
                                                         if ([[NSFileManager defaultManager] fileExistsAtPath:unzippedFolderPath]) {
@@ -112,7 +112,7 @@ static NSString *ServiceName = @"";
                                                         
                                                         if (isDiffUpdate) {
                                                             // Copy the current package to the new package.
-                                                            NSString *currentPackageFolderPath = [self getCurrentPackageFolderPath:&error];
+                                                            NSString *currentPackageFolderPath = [self getCurrentPackageFolderPath:&error resourceName:resourceName];
                                                             if (error) {
                                                                 failCallback(error);
                                                                 return;
@@ -138,8 +138,8 @@ static NSString *ServiceName = @"";
                                                                     return;
                                                                 }
                                                                 
-                                                                [[NSFileManager defaultManager] copyItemAtPath:[[CodePush binaryBundleURL] path]
-                                                                                                        toPath:[newUpdateCodePushPath stringByAppendingPathComponent:[[CodePush binaryBundleURL] lastPathComponent]]
+                                                                [[NSFileManager defaultManager] copyItemAtPath:[[CodePush binaryBundleURL:resourceName] path]
+                                                                                                        toPath:[newUpdateCodePushPath stringByAppendingPathComponent:[[CodePush binaryBundleURL:resourceName] lastPathComponent]]
                                                                                                          error:&error];
                                                                 if (error) {
                                                                     failCallback(error);
@@ -341,15 +341,10 @@ static NSString *ServiceName = @"";
     [downloadHandler download:updatePackage[@"downloadUrl"]];
 }
 
-+ (void)setServiceName:(NSString *)serviceName
-{
-    ServiceName = serviceName;
-}
-
-+ (NSString *)getCodePushPath
++ (NSString *)getCodePushPath:(NSString *)resourceName
 {
     NSString* codePushPath = [[CodePush getApplicationSupportDirectory] 
-                                stringByAppendingPathComponent:[NSString stringWithFormat:@"CodePush/%@", ServiceName]];
+                                stringByAppendingPathComponent:[NSString stringWithFormat:@"CodePush/%@", resourceName]];
     if ([CodePush isUsingTestConfiguration]) {
         codePushPath = [codePushPath stringByAppendingPathComponent:@"TestPackages"];
     }
@@ -357,25 +352,25 @@ static NSString *ServiceName = @"";
     return codePushPath;
 }
 
-+ (NSDictionary *)getCurrentPackage:(NSError **)error
++ (NSDictionary *)getCurrentPackage:(NSError **)error resourceName:(NSString *)resourceName
 {
-    NSString *packageHash = [CodePushPackage getCurrentPackageHash:error];
+    NSString *packageHash = [CodePushPackage getCurrentPackageHash:error resourceName:resourceName];
     if (!packageHash) {
         return nil;
     }
 
-    return [CodePushPackage getPackage:packageHash error:error];
+    return [CodePushPackage getPackage:packageHash error:error resourceName:resourceName];
 }
 
-+ (NSString *)getCurrentPackageBundlePath:(NSError **)error
++ (NSString *)getCurrentPackageBundlePath:(NSError **)error resourceName:(NSString *)resourceName
 {
-    NSString *packageFolder = [self getCurrentPackageFolderPath:error];
+    NSString *packageFolder = [self getCurrentPackageFolderPath:error resourceName:resourceName];
     
     if (!packageFolder) {
         return nil;
     }
     
-    NSDictionary *currentPackage = [self getCurrentPackage:error];
+    NSDictionary *currentPackage = [self getCurrentPackage:error resourceName:resourceName];
     
     if (!currentPackage) {
         return nil;
@@ -389,9 +384,9 @@ static NSString *ServiceName = @"";
     }
 }
 
-+ (NSString *)getCurrentPackageHash:(NSError **)error
++ (NSString *)getCurrentPackageHash:(NSError **)error resourceName:(NSString *)resourceName
 {
-    NSDictionary *info = [self getCurrentPackageInfo:error];
+    NSDictionary *info = [self getCurrentPackageInfo:error resourceName:resourceName];
     if (!info) {
         return nil;
     }
@@ -399,9 +394,9 @@ static NSString *ServiceName = @"";
     return info[@"currentPackage"];
 }
 
-+ (NSString *)getCurrentPackageFolderPath:(NSError **)error
++ (NSString *)getCurrentPackageFolderPath:(NSError **)error resourceName:(NSString *)resourceName
 {
-    NSDictionary *info = [self getCurrentPackageInfo:error];
+    NSDictionary *info = [self getCurrentPackageInfo:error resourceName:resourceName];
     
     if (!info) {
         return nil;
@@ -413,12 +408,12 @@ static NSString *ServiceName = @"";
         return nil;
     }
     
-    return [self getPackageFolderPath:packageHash];
+    return [self getPackageFolderPath:packageHash resourceName:resourceName];
 }
 
-+ (NSMutableDictionary *)getCurrentPackageInfo:(NSError **)error
++ (NSMutableDictionary *)getCurrentPackageInfo:(NSError **)error resourceName:(NSString *)resourceName
 {
-    NSString *statusFilePath = [self getStatusFilePath];
+    NSString *statusFilePath = [self getStatusFilePath:resourceName];
     if (![[NSFileManager defaultManager] fileExistsAtPath:statusFilePath]) {
         return [NSMutableDictionary dictionary];
     }
@@ -441,15 +436,16 @@ static NSString *ServiceName = @"";
     return [json mutableCopy];
 }
 
-+ (NSString *)getDownloadFilePath
++ (NSString *)getDownloadFilePath:(NSString *)resourceName
 {
-    return [[self getCodePushPath] stringByAppendingPathComponent:DownloadFileName];
+    return [[self getCodePushPath:resourceName] stringByAppendingPathComponent:DownloadFileName];
 }
 
 + (NSDictionary *)getPackage:(NSString *)packageHash
                        error:(NSError **)error
+                resourceName:(NSString *)resourceName
 {
-    NSString *updateDirectoryPath = [self getPackageFolderPath:packageHash];
+    NSString *updateDirectoryPath = [self getPackageFolderPath:packageHash resourceName:resourceName];
     NSString *updateMetadataFilePath = [updateDirectoryPath stringByAppendingPathComponent:UpdateMetadataFileName];
     
     if (![[NSFileManager defaultManager] fileExistsAtPath:updateMetadataFilePath]) {
@@ -469,24 +465,24 @@ static NSString *ServiceName = @"";
                                              error:error];
 }
 
-+ (NSString *)getPackageFolderPath:(NSString *)packageHash
++ (NSString *)getPackageFolderPath:(NSString *)packageHash resourceName:(NSString *)resourceName
 {
-    return [[self getCodePushPath] stringByAppendingPathComponent:packageHash];
+    return [[self getCodePushPath:resourceName] stringByAppendingPathComponent:packageHash];
 }
 
-+ (NSDictionary *)getPreviousPackage:(NSError **)error
++ (NSDictionary *)getPreviousPackage:(NSError **)error resourceName:(NSString *)resourceName
 {
-    NSString *packageHash = [self getPreviousPackageHash:error];
+    NSString *packageHash = [self getPreviousPackageHash:error resourceName:resourceName];
     if (!packageHash) {
         return nil;
     }
     
-    return [CodePushPackage getPackage:packageHash error:error];
+    return [CodePushPackage getPackage:packageHash error:error resourceName:resourceName];
 }
 
-+ (NSString *)getPreviousPackageHash:(NSError **)error
++ (NSString *)getPreviousPackageHash:(NSError **)error resourceName:(NSString *)resourceName
 {
-    NSDictionary *info = [self getCurrentPackageInfo:error];
+    NSDictionary *info = [self getCurrentPackageInfo:error resourceName:resourceName];
     if (!info) {
         return nil;
     }
@@ -494,22 +490,23 @@ static NSString *ServiceName = @"";
     return info[@"previousPackage"];
 }
 
-+ (NSString *)getStatusFilePath
++ (NSString *)getStatusFilePath:(NSString *)resourceName
 {
-    return [[self getCodePushPath] stringByAppendingPathComponent:StatusFile];
+    return [[self getCodePushPath:resourceName] stringByAppendingPathComponent:StatusFile];
 }
 
-+ (NSString *)getUnzippedFolderPath
++ (NSString *)getUnzippedFolderPath:(NSString *)resourceName
 {
-    return [[self getCodePushPath] stringByAppendingPathComponent:UnzippedFolderName];
+    return [[self getCodePushPath:resourceName] stringByAppendingPathComponent:UnzippedFolderName];
 }
 
 + (BOOL)installPackage:(NSDictionary *)updatePackage
    removePendingUpdate:(BOOL)removePendingUpdate
                  error:(NSError **)error
+          resourceName:(NSString *)resourceName
 {
     NSString *packageHash = updatePackage[@"packageHash"];
-    NSMutableDictionary *info = [self getCurrentPackageInfo:error];
+    NSMutableDictionary *info = [self getCurrentPackageInfo:error resourceName:resourceName];
     
     if (!info) {
         return NO;
@@ -521,7 +518,7 @@ static NSString *ServiceName = @"";
     }
 
     if (removePendingUpdate) {
-        NSString *currentPackageFolderPath = [self getCurrentPackageFolderPath:error];
+        NSString *currentPackageFolderPath = [self getCurrentPackageFolderPath:error resourceName:resourceName];
         if (currentPackageFolderPath) {
             // Error in deleting pending package will not cause the entire operation to fail.
             NSError *deleteError;
@@ -532,9 +529,9 @@ static NSString *ServiceName = @"";
             }
         }
     } else {
-        NSString *previousPackageHash = [self getPreviousPackageHash:error];
+        NSString *previousPackageHash = [self getPreviousPackageHash:error resourceName:resourceName];
         if (previousPackageHash && ![previousPackageHash isEqualToString:packageHash]) {
-            NSString *previousPackageFolderPath = [self getPackageFolderPath:previousPackageHash];
+            NSString *previousPackageFolderPath = [self getPackageFolderPath:previousPackageHash resourceName:resourceName];
             // Error in deleting old package will not cause the entire operation to fail.
             NSError *deleteError;
             [[NSFileManager defaultManager] removeItemAtPath:previousPackageFolderPath
@@ -548,19 +545,20 @@ static NSString *ServiceName = @"";
     
     [info setValue:packageHash forKey:@"currentPackage"];
     return [self updateCurrentPackageInfo:info
-                                    error:error];
+                                    error:error
+                             resourceName:resourceName];
 }
 
-+ (void)rollbackPackage
++ (void)rollbackPackage:(NSString *)resourceName
 {
     NSError *error;
-    NSMutableDictionary *info = [self getCurrentPackageInfo:&error];
+    NSMutableDictionary *info = [self getCurrentPackageInfo:&error resourceName:resourceName];
     if (!info) {
         CPLog(@"Error getting current package info: %@", error);
         return;
     }
     
-    NSString *currentPackageFolderPath = [self getCurrentPackageFolderPath:&error];        
+    NSString *currentPackageFolderPath = [self getCurrentPackageFolderPath:&error resourceName:resourceName];
     if (!currentPackageFolderPath) {
         CPLog(@"Error getting current package folder path: %@", error);
         return;
@@ -576,11 +574,12 @@ static NSString *ServiceName = @"";
     [info setValue:info[@"previousPackage"] forKey:@"currentPackage"];
     [info removeObjectForKey:@"previousPackage"];
     
-    [self updateCurrentPackageInfo:info error:&error];
+    [self updateCurrentPackageInfo:info error:&error resourceName:resourceName];
 }
 
 + (BOOL)updateCurrentPackageInfo:(NSDictionary *)packageInfo
                            error:(NSError **)error
+                    resourceName:(NSString *)resourceName
 {
     NSData *packageInfoData = [NSJSONSerialization dataWithJSONObject:packageInfo
                                                               options:0
@@ -591,7 +590,7 @@ static NSString *ServiceName = @"";
 
     NSString *packageInfoString = [[NSString alloc] initWithData:packageInfoData
                                                         encoding:NSUTF8StringEncoding];
-    BOOL result = [packageInfoString writeToFile:[self getStatusFilePath]
+    BOOL result = [packageInfoString writeToFile:[self getStatusFilePath:resourceName]
                         atomically:YES
                           encoding:NSUTF8StringEncoding
                              error:error];
