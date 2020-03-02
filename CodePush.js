@@ -10,7 +10,7 @@ let NativeCodePush = require("react-native").NativeModules.CodePush;
 const PackageMixins = require("./package-mixins")(NativeCodePush);
 
 async function checkForUpdate({ deploymentKey = null, bundleName = '' }, handleBinaryVersionMismatchCallback = null) {
-  /*
+  /**
    * Before we ask the server if an update exists, we
    * need to retrieve three pieces of information from the
    * native side: deployment key, app version (e.g. 1.0.1)
