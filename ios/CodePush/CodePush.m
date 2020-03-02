@@ -112,7 +112,7 @@ static NSString *const LatestRollbackCountKey = @"count";
 {
     [bundleResource setValue:@{ @"bundleResourceName": resourceName } forKey:resourceName];
     [self ensureBinaryBundleExists:resourceName];
-    NSString *logMessageFormat = @"Loading JS bundle from %@";
+    NSString *logMessageFormat = @"Find JS bundle from %@";
 
     NSError *error;
     NSString *packageFile = [CodePushPackage getCurrentPackageBundlePath:&error resourceName:resourceName];
@@ -492,8 +492,8 @@ static NSString *const LatestRollbackCountKey = @"count";
             NSData *sourceCode = [NSData dataWithContentsOfFile:jsCodeLocation
                                                         options:NSDataReadingMappedIfSafe
                                                         error:&error];
-            // [super.bridge setValue:[CodePush bundleURL] forKey:@"bundleURL"];
             [super.bridge.batchedBridge executeSourceCode:sourceCode sync:NO];
+            CPLog(@"Load JS bundle: %@", resourceName);
         }
         [super.bridge reload];
     });
