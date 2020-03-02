@@ -200,7 +200,7 @@ static NSString *const UnzippedFolderName = @"unzipped";
                                                         [[NSFileManager defaultManager] removeItemAtPath:unzippedFolderPath
                                                                                                    error:&nonFailingError];
                                                         if (nonFailingError) {
-                                                            CPLog(@"Error deleting downloaded file: %@", nonFailingError);
+                                                            CPLog(@"Error deleting downloaded file->%@: %@", resourceName, nonFailingError);
                                                             nonFailingError = nil;
                                                         }
                                                         
@@ -233,7 +233,7 @@ static NSString *const UnzippedFolderName = @"unzipped";
                                                             }
                                                         }
 
-                                                        CPLog((isDiffUpdate) ? @"Applying diff update." : @"Applying full update.");
+                                                        CPLog((isDiffUpdate) ? @"Applying diff update: %@" : @"Applying full update: %@", resourceName);
                                                         
                                                         BOOL isSignatureVerificationEnabled = (publicKey != nil);
                                                         
