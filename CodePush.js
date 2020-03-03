@@ -217,7 +217,7 @@ async function tryReportStatus(statusReport, resumeListener, bundleName) {
         if (newState !== "active") return;
         const refreshedStatusReport = await NativeCodePush.getNewStatusReport(bundleName);
         if (refreshedStatusReport) {
-          tryReportStatus(refreshedStatusReport, resumeListener);
+          tryReportStatus(refreshedStatusReport, resumeListener, bundleName);
         } else {
           AppState.removeEventListener("change", resumeListener);
         }
