@@ -32,39 +32,23 @@ public class CodePush implements ReactPackage {
 
     private String mAssetsBundleFileName;
 
-    // Helper classes.
-    private CodePushUpdateManager mUpdateManager;
-    private CodePushTelemetryManager mTelemetryManager;
-    private SettingsManager mSettingsManager;
-
     // Config properties.
-    private String mDeploymentKey;
     private static String mServerUrl = "https://codepush.appcenter.ms/";
 
     private Context mContext;
-    private final boolean mIsDebugMode;
 
     private static String mPublicKey;
 
     private static ReactInstanceHolder mReactInstanceHolder;
-    private static CodePush mCurrentInstance;
-
-    public CodePush(String deploymentKey, Context context) {
-        this(deploymentKey, context, false);
-    }
+    private static Map<String, Object> mInstances = new HashMap<>();
 
     public static String getServiceUrl() {
         return mServerUrl;
     }
 
-    public CodePush(String deploymentKey, Context context, boolean isDebugMode) {
+    public CodePush(Context context, String serverUrl) {
         mContext = context.getApplicationContext();
-
-        mUpdateManager = new CodePushUpdateManager(context.getFilesDir().getAbsolutePath());
-        mTelemetryManager = new CodePushTelemetryManager(mContext);
-        mDeploymentKey = deploymentKey;
-        mIsDebugMode = isDebugMode;
-        mSettingsManager = new SettingsManager(mContext);
+        mServerUrl = serverUrl;
 
         if (sAppVersion == null) {
             try {
@@ -74,38 +58,24 @@ public class CodePush implements ReactPackage {
                 throw new CodePushUnknownException("Unable to get package info for " + mContext.getPackageName(), e);
             }
         }
-
-        mCurrentInstance = this;
-
-        String publicKeyFromStrings = getCustomPropertyFromStringsIfExist("PublicKey");
-        if (publicKeyFromStrings != null) mPublicKey = publicKeyFromStrings;
-
-        String serverUrlFromStrings = getCustomPropertyFromStringsIfExist("ServerUrl");
-        if (serverUrlFromStrings != null) mServerUrl = serverUrlFromStrings;
-
-        clearDebugCacheIfNeeded(null);
-        initializeUpdateAfterRestart();
     }
 
-    public CodePush(String deploymentKey, Context context, boolean isDebugMode, String serverUrl) {
-        this(deploymentKey, context, isDebugMode);
-        mServerUrl = serverUrl;
+    private InstanceInfo(CodePushUpdateManager updateManager, CodePushTelemetryManager telemetryManager, SettingsManager settingsManager){
+        updateManager = updateManager;
+        telemetryManager = telemetryManager;
+        settingsManager = settingsManager;
     }
 
-    public CodePush(String deploymentKey, Context context, boolean isDebugMode, int publicKeyResourceDescriptor) {
-        this(deploymentKey, context, isDebugMode);
+    public initializeModule(String resourceName) {=
+        InstanceInfo instanceInfo = new InstanceInfo();
 
-        mPublicKey = getPublicKeyByResourceDescriptor(publicKeyResourceDescriptor);
-    }
+        instanceInfo.updateManager = new CodePushUpdateManager(context.getFilesDir().getAbsolutePath(), resourceName);
+        instanceInfo.telemetryManager = new CodePushTelemetryManager(mContext, resourceName);
+        instanceInfo.settingsManager = new SettingsManager(mContext, resourceName);
 
-    public CodePush(String deploymentKey, Context context, boolean isDebugMode, String serverUrl, Integer publicKeyResourceDescriptor) {
-        this(deploymentKey, context, isDebugMode);
+        mInstances.put(resourceName, instanceInfo);
 
-        if (publicKeyResourceDescriptor != null) {
-            mPublicKey = getPublicKeyByResourceDescriptor(publicKeyResourceDescriptor);
-        }
-
-        mServerUrl = serverUrl;
+        initializeUpdateAfterRestart(resourceName);
     }
 
     private String getPublicKeyByResourceDescriptor(int publicKeyResourceDescriptor){
@@ -126,26 +96,7 @@ public class CodePush implements ReactPackage {
         return publicKey;
     }
 
-    private String getCustomPropertyFromStringsIfExist(String propertyName) {
-        String property;
-      
-        String packageName = mContext.getPackageName();
-        int resId = mContext.getResources().getIdentifier("CodePush" + propertyName, "string", packageName);
-        
-        if (resId != 0) {
-            property = mContext.getString(resId);
-
-            if (!property.isEmpty()) {
-                return property;
-            } else {
-                CodePushUtils.log("Specified " + propertyName + " is empty");
-            } 
-        }
-
-        return null;
-    }
-
-    public void clearDebugCacheIfNeeded(ReactInstanceManager instanceManager) {
+    public void clearDebugCacheIfNeeded(ReactInstanceManager instanceManager, boolean isDebugMode) {
         boolean isLiveReloadEnabled = false;
 
         // Use instanceManager for checking if we use LiveReload mode. In this case we should not remove ReactNativeDevBundle.js file
@@ -158,7 +109,7 @@ public class CodePush implements ReactPackage {
             }
         }
 
-        if (mIsDebugMode && mSettingsManager.isPendingUpdate(null) && !isLiveReloadEnabled) {
+        if (isDebugMode && mSettingsManager.isPendingUpdate(null) && !isLiveReloadEnabled) {
             // This needs to be kept in sync with https://github.com/facebook/react-native/blob/master/ReactAndroid/src/main/java/com/facebook/react/devsupport/DevSupportManager.java#L78
             File cachedDevBundle = new File(mContext.getFilesDir(), "ReactNativeDevBundle.js");
             if (cachedDevBundle.exists()) {
@@ -205,8 +156,8 @@ public class CodePush implements ReactPackage {
     }
 
     @Deprecated
-    public static String getBundleUrl(String assetsBundleFileName) {
-        return getJSBundleFile(assetsBundleFileName);
+    public static String getBundleUrl(String resourceName) {
+        return getJSBundleFile(resourceName);
     }
 
     public Context getContext() {
@@ -217,17 +168,17 @@ public class CodePush implements ReactPackage {
         return mDeploymentKey;
     }
 
-    public static String getJSBundleFile(String assetsBundleFileName) {
+    public static String getJSBundleFile(String resourceName) {
         if (mCurrentInstance == null) {
             throw new CodePushNotInitializedException("A CodePush instance has not been created yet. Have you added it to your app's list of ReactPackages?");
         }
 
-        return mCurrentInstance.getJSBundleFileInternal(assetsBundleFileName);
+        return mCurrentInstance.getJSBundleFileInternal(resourceName);
     }
 
-    public String getJSBundleFileInternal(String assetsBundleFileName) {
-        this.mAssetsBundleFileName = assetsBundleFileName;
-        String binaryJsBundleUrl = CodePushConstants.ASSETS_BUNDLE_PREFIX + assetsBundleFileName;
+    public String getJSBundleFileInternal(String resourceName, boolean isDebugMode) {
+        this.mAssetsBundleFileName = resourceName;
+        String binaryJsBundleUrl = CodePushConstants.ASSETS_BUNDLE_PREFIX + resourceName;
 
         String packageFilePath = null;
         try {
@@ -253,7 +204,7 @@ public class CodePush implements ReactPackage {
         } else {
             // The binary version is newer.
             this.mDidUpdate = false;
-            if (!this.mIsDebugMode || hasBinaryVersionChanged(packageMetadata)) {
+            if (!isDebugMode || hasBinaryVersionChanged(packageMetadata)) {
                 this.clearUpdates();
             }
 
@@ -309,10 +260,6 @@ public class CodePush implements ReactPackage {
         mCurrentInstance = null;
     }
 
-    boolean isDebugMode() {
-        return mIsDebugMode;
-    }
-
     boolean isRunningBinaryVersion() {
         return sIsRunningBinaryVersion;
     }
@@ -361,10 +308,6 @@ public class CodePush implements ReactPackage {
     /* The below 3 methods are used for running tests.*/
     public static boolean isUsingTestConfiguration() {
         return sTestConfigurationFlag;
-    }
-
-    public void setDeploymentKey(String deploymentKey) {
-        mDeploymentKey = deploymentKey;
     }
 
     public static void setUsingTestConfiguration(boolean shouldUseTestConfiguration) {

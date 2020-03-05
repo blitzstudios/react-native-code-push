@@ -32,9 +32,9 @@ public class CodePushUpdateManager {
         return mDocumentsDirectory;
     }
 
-    private String getCodePushPath(String assetsBundleFileName) {
+    private String getCodePushPath(String resourceName) {
         String codePushPath = CodePushUtils.appendPathComponent(getDocumentsDirectory(), 
-            CodePushConstants.CODE_PUSH_FOLDER_PREFIX + "/" + assetsBundleFileName);
+            CodePushConstants.CODE_PUSH_FOLDER_PREFIX + "/" + resourceName);
         if (CodePush.isUsingTestConfiguration()) {
             codePushPath = CodePushUtils.appendPathComponent(codePushPath, "TestPackages");
         }
