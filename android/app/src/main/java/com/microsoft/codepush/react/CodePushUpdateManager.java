@@ -15,9 +15,11 @@ import java.nio.ByteBuffer;
 public class CodePushUpdateManager {
 
     private String mDocumentsDirectory;
+    private String mBundleName;
 
-    public CodePushUpdateManager(String documentsDirectory) {
+    public CodePushUpdateManager(String documentsDirectory, String bundleName) {
         mDocumentsDirectory = documentsDirectory;
+        mBundleName = bundleName;
     }
 
     private String getDownloadFilePath() {
@@ -32,9 +34,9 @@ public class CodePushUpdateManager {
         return mDocumentsDirectory;
     }
 
-    private String getCodePushPath(String resourceName) {
+    private String getCodePushPath() {
         String codePushPath = CodePushUtils.appendPathComponent(getDocumentsDirectory(), 
-            CodePushConstants.CODE_PUSH_FOLDER_PREFIX + "/" + resourceName);
+            CodePushConstants.CODE_PUSH_FOLDER_PREFIX + "/" + mBundleName);
         if (CodePush.isUsingTestConfiguration()) {
             codePushPath = CodePushUtils.appendPathComponent(codePushPath, "TestPackages");
         }
