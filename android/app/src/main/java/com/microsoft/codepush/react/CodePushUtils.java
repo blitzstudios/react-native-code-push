@@ -205,6 +205,10 @@ public class CodePushUtils {
         Log.d(CodePushConstants.REACT_NATIVE_LOG_TAG, "[CodePush] " + message);
     }
 
+    public static void log(String message, String resourceName) {
+        Log.d(CodePushConstants.REACT_NATIVE_LOG_TAG, "[CodePush] [" + resourceName + "] " + message);
+    }
+
     public static void log(Throwable tr) {
         Log.e(CodePushConstants.REACT_NATIVE_LOG_TAG, "[CodePush] Exception", tr);
     }
