@@ -68,7 +68,7 @@ public class CodePush implements ReactPackage {
     public static void initializeModule(String resourceName) {
         ModuleInstance moduleInstance = new ModuleInstance();
 
-        moduleInstance.updateManager = new CodePushUpdateManager(mContext.getFilesDir().getAbsolutePath(), getBundleName(resourceName));
+        moduleInstance.updateManager = new CodePushUpdateManager(mContext.getFilesDir().getAbsolutePath(), resourceName);
         moduleInstance.telemetryManager = new CodePushTelemetryManager(mContext, resourceName);
         moduleInstance.settingsManager = new SettingsManager(mContext);
 
