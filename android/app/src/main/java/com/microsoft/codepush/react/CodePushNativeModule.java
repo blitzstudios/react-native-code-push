@@ -207,7 +207,7 @@ public class CodePushNativeModule extends ReactContextBaseJavaModule {
     }
 
     @ReactMethod
-    public void downloadUpdate(final ReadableMap updatePackage, final boolean notifyProgress, final Promise promise) {
+    public void downloadUpdate(final ReadableMap updatePackage, final boolean notifyProgress, final String assetsBundleFileName, final Promise promise) {
         AsyncTask<Void, Void, Void> asyncTask = new AsyncTask<Void, Void, Void>() {
             @Override
             protected Void doInBackground(Void... params) {
@@ -279,7 +279,7 @@ public class CodePushNativeModule extends ReactContextBaseJavaModule {
     }
 
     @ReactMethod
-    public void getConfiguration(String assetsBundleFileName, Promise promise) {
+    public void getConfiguration(final String assetsBundleFileName, Promise promise) {
         try {
             WritableMap configMap =  Arguments.createMap();
             configMap.putString("appVersion", mCodePush.getAppVersion());
@@ -291,7 +291,6 @@ public class CodePushNativeModule extends ReactContextBaseJavaModule {
             if (mBinaryContentsHash != null) {
                 configMap.putString(CodePushConstants.PACKAGE_HASH_KEY, mBinaryContentsHash);
             }
-
             promise.resolve(configMap);
         } catch(CodePushUnknownException e) {
             CodePushUtils.log(e);
@@ -300,7 +299,7 @@ public class CodePushNativeModule extends ReactContextBaseJavaModule {
     }
 
     @ReactMethod
-    public void getUpdateMetadata(final int updateState, final Promise promise) {
+    public void getUpdateMetadata(final int updateState,final String assetsBundleFileName, final Promise promise) {
         AsyncTask<Void, Void, Void> asyncTask = new AsyncTask<Void, Void, Void>() {
             @Override
             protected Void doInBackground(Void... params) {
@@ -353,7 +352,7 @@ public class CodePushNativeModule extends ReactContextBaseJavaModule {
                 } catch (CodePushMalformedDataException e) {
                     // We need to recover the app in case 'codepush.json' is corrupted
                     CodePushUtils.log(e.getMessage());
-                    clearUpdates();
+                    clearUpdates(assetsBundleFileName);
                     promise.resolve(null);
                 } catch(CodePushUnknownException e) {
                     CodePushUtils.log(e);
@@ -368,7 +367,7 @@ public class CodePushNativeModule extends ReactContextBaseJavaModule {
     }
 
     @ReactMethod
-    public void getNewStatusReport(String assetsBundleFileName, final Promise promise) {
+    public void getNewStatusReport(final String assetsBundleFileName, final Promise promise) {
         AsyncTask<Void, Void, Void> asyncTask = new AsyncTask<Void, Void, Void>() {
             @Override
             protected Void doInBackground(Void... params) {
@@ -425,7 +424,7 @@ public class CodePushNativeModule extends ReactContextBaseJavaModule {
     }
 
     @ReactMethod
-    public void installUpdate(final ReadableMap updatePackage, final int installMode, final int minimumBackgroundDuration, final Promise promise) {
+    public void installUpdate(final ReadableMap updatePackage, final String assetsBundleFileName, final int installMode, final int minimumBackgroundDuration, final Promise promise) {
         AsyncTask<Void, Void, Void> asyncTask = new AsyncTask<Void, Void, Void>() {
             @Override
             protected Void doInBackground(Void... params) {
@@ -440,11 +439,11 @@ public class CodePushNativeModule extends ReactContextBaseJavaModule {
                     }
 
                     if (installMode == CodePushInstallMode.ON_NEXT_RESUME.getValue() ||
-                        // We also add the resume listener if the installMode is IMMEDIATE, because
-                        // if the current activity is backgrounded, we want to reload the bundle when
-                        // it comes back into the foreground.
-                        installMode == CodePushInstallMode.IMMEDIATE.getValue() ||
-                        installMode == CodePushInstallMode.ON_NEXT_SUSPEND.getValue()) {
+                            // We also add the resume listener if the installMode is IMMEDIATE, because
+                            // if the current activity is backgrounded, we want to reload the bundle when
+                            // it comes back into the foreground.
+                            installMode == CodePushInstallMode.IMMEDIATE.getValue() ||
+                            installMode == CodePushInstallMode.ON_NEXT_SUSPEND.getValue()) {
 
                         // Store the minimum duration on the native module as an instance
                         // variable instead of relying on a closure below, so that any
@@ -549,7 +548,7 @@ public class CodePushNativeModule extends ReactContextBaseJavaModule {
     }
 
     @ReactMethod
-    public void isFirstRun(String packageHash, Promise promise) {
+    public void isFirstRun(String packageHash, final String assetsBundleFileName, Promise promise) {
         try {
             boolean isFirstRun = mCodePush.didUpdate()
                     && packageHash != null
@@ -583,7 +582,7 @@ public class CodePushNativeModule extends ReactContextBaseJavaModule {
     }
 
     @ReactMethod
-    public void restartApp(boolean onlyIfUpdateIsPending, Promise promise) {
+    public void restartApp(boolean onlyIfUpdateIsPending, final String assetsBundleFileName, Promise promise) {
         try {
             // If this is an unconditional restart request, or there
             // is current pending update, then reload the app.
@@ -612,7 +611,7 @@ public class CodePushNativeModule extends ReactContextBaseJavaModule {
     @ReactMethod
     // Replaces the current bundle with the one downloaded from removeBundleUrl.
     // It is only to be used during tests. No-ops if the test configuration flag is not set.
-    public void downloadAndReplaceCurrentBundle(String remoteBundleUrl) {
+    public void downloadAndReplaceCurrentBundle(String remoteBundleUrl, final String assetsBundleFileName) {
         try {
             if (mCodePush.isUsingTestConfiguration()) {
                 try {
@@ -634,7 +633,7 @@ public class CodePushNativeModule extends ReactContextBaseJavaModule {
      * behavior.
      */
     @ReactMethod
-    public void clearUpdates() {
+    public void clearUpdates(final String assetsBundleFileName) {
         CodePushUtils.log("Clearing updates.");
         mCodePush.clearUpdates();
     }
