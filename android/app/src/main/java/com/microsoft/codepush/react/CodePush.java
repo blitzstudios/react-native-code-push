@@ -205,11 +205,6 @@ public class CodePush implements ReactPackage {
     }
 
     @Deprecated
-    public static String getBundleUrl() {
-        return getJSBundleFile();
-    }
-
-    @Deprecated
     public static String getBundleUrl(String assetsBundleFileName) {
         return getJSBundleFile(assetsBundleFileName);
     }
@@ -220,10 +215,6 @@ public class CodePush implements ReactPackage {
 
     public String getDeploymentKey() {
         return mDeploymentKey;
-    }
-
-    public static String getJSBundleFile() {
-        return CodePush.getJSBundleFile(CodePushConstants.DEFAULT_JS_BUNDLE_NAME);
     }
 
     public static String getJSBundleFile(String assetsBundleFileName) {

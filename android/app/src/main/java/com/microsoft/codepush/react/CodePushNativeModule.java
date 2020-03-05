@@ -279,7 +279,7 @@ public class CodePushNativeModule extends ReactContextBaseJavaModule {
     }
 
     @ReactMethod
-    public void getConfiguration(Promise promise) {
+    public void getConfiguration(String assetsBundleFileName, Promise promise) {
         try {
             WritableMap configMap =  Arguments.createMap();
             configMap.putString("appVersion", mCodePush.getAppVersion());
@@ -368,7 +368,7 @@ public class CodePushNativeModule extends ReactContextBaseJavaModule {
     }
 
     @ReactMethod
-    public void getNewStatusReport(final Promise promise) {
+    public void getNewStatusReport(String assetsBundleFileName, final Promise promise) {
         AsyncTask<Void, Void, Void> asyncTask = new AsyncTask<Void, Void, Void>() {
             @Override
             protected Void doInBackground(Void... params) {
