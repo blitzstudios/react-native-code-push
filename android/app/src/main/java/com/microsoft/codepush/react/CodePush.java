@@ -184,7 +184,7 @@ public class CodePush implements ReactPackage {
         return (ModuleInstance) mModuleInstances.get(resourceName);
     }
 
-    public String getBundleName(String resourceName) {
+    public static String getBundleName(String resourceName) {
         return resourceName + ".bundle";
     }
 
