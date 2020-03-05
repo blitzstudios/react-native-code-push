@@ -76,7 +76,7 @@ async function checkForUpdate({ deploymentKey = null, bundleName = '' }, handleB
       localPackage && (update.packageHash === localPackage.packageHash) ||
       (!localPackage || localPackage._isDebugOnly) && config.packageHash === update.packageHash) {
     if (update && update.updateAppVersion) {
-      log("An update is available but it is not targeting the binary version of your app.");
+      log("An update is available but it is not targeting the binary version of your app.", bundleName);
       if (handleBinaryVersionMismatchCallback && typeof handleBinaryVersionMismatchCallback === "function") {
         handleBinaryVersionMismatchCallback(update)
       }
@@ -188,16 +188,16 @@ async function tryReportStatus(statusReport, resumeListener, bundleName) {
   const previousDeploymentKey = statusReport.previousDeploymentKey || config.deploymentKey;
   try {
     if (statusReport.appVersion) {
-      log(`Reporting binary update (${statusReport.appVersion})`);
+      log(`Reporting binary update (${statusReport.appVersion})`, bundleName);
 
       const sdk = getPromisifiedSdk(requestFetchAdapter, config);
       await sdk.reportStatusDeploy(/* deployedPackage */ null, /* status */ null, previousLabelOrAppVersion, previousDeploymentKey);
     } else {
       const label = statusReport.package.label;
       if (statusReport.status === "DeploymentSucceeded") {
-        log(`Reporting CodePush update success (${label})`);
+        log(`Reporting CodePush update success (${label})`, bundleName);
       } else {
-        log(`Reporting CodePush update rollback (${label})`);
+        log(`Reporting CodePush update rollback (${label})`, bundleName);
         await NativeCodePush.setLatestRollbackInfo(statusReport.package.packageHash, bundleName);
       }
 
@@ -209,7 +209,7 @@ async function tryReportStatus(statusReport, resumeListener, bundleName) {
     NativeCodePush.recordStatusReported(bundleName, statusReport);
     resumeListener && AppState.removeEventListener("change", resumeListener);
   } catch (e) {
-    log(`Report status failed: ${JSON.stringify(statusReport)}`);
+    log(`Report status failed: ${JSON.stringify(statusReport)}`, bundleName);
     NativeCodePush.saveStatusReportForRetry(bundleName, statusReport);
     // Try again when the app resumes
     if (!resumeListener) {
@@ -228,10 +228,10 @@ async function tryReportStatus(statusReport, resumeListener, bundleName) {
 }
 
 async function shouldUpdateBeIgnored(remotePackage, syncOptions) {
-  let { rollbackRetryOptions } = syncOptions;
+  let { rollbackRetryOptions, bundleName, ignoreFailedUpdates } = syncOptions;
 
   const isFailedPackage = remotePackage && remotePackage.failedInstall;
-  if (!isFailedPackage || !syncOptions.ignoreFailedUpdates) {
+  if (!isFailedPackage || !ignoreFailedUpdates) {
     return false;
   }
 
@@ -245,20 +245,20 @@ async function shouldUpdateBeIgnored(remotePackage, syncOptions) {
     rollbackRetryOptions = { ...CodePush.DEFAULT_ROLLBACK_RETRY_OPTIONS, ...rollbackRetryOptions };
   }
   
-  if (!validateRollbackRetryOptions(rollbackRetryOptions)) {
+  if (!validateRollbackRetryOptions(rollbackRetryOptions, bundleName)) {
     return true;
   }
   
-  const latestRollbackInfo = await NativeCodePush.getLatestRollbackInfo(syncOptions.bundleName);
+  const latestRollbackInfo = await NativeCodePush.getLatestRollbackInfo(bundleName);
   if (!validateLatestRollbackInfo(latestRollbackInfo, remotePackage.packageHash)) {
-    log("The latest rollback info is not valid.");
+    log("The latest rollback info is not valid or exist.", bundleName);
     return true;
   }
 
   const { delayInHours, maxRetryAttempts } = rollbackRetryOptions;
   const hoursSinceLatestRollback = (Date.now() - latestRollbackInfo.time) / (1000 * 60 * 60);
   if (hoursSinceLatestRollback >= delayInHours && maxRetryAttempts >= latestRollbackInfo.count) {
-    log("Previous rollback should be ignored due to rollback retry options.");
+    log("Previous rollback should be ignored due to rollback retry options.", bundleName);
     return false;
   }
 
@@ -273,19 +273,19 @@ function validateLatestRollbackInfo(latestRollbackInfo, packageHash) {
     latestRollbackInfo.packageHash === packageHash;
 }
 
-function validateRollbackRetryOptions(rollbackRetryOptions) {
+function validateRollbackRetryOptions(rollbackRetryOptions, bundleName) {
   if (typeof rollbackRetryOptions.delayInHours !== "number") {
-    log("The 'delayInHours' rollback retry parameter must be a number.");
+    log("The 'delayInHours' rollback retry parameter must be a number.", bundleName);
     return false;
   }
 
   if (typeof rollbackRetryOptions.maxRetryAttempts !== "number") {
-    log("The 'maxRetryAttempts' rollback retry parameter must be a number.");
+    log("The 'maxRetryAttempts' rollback retry parameter must be a number.", bundleName);
     return false;
   }
 
   if (rollbackRetryOptions.maxRetryAttempts < 1) {
-    log("The 'maxRetryAttempts' rollback retry parameter cannot be less then 1.");
+    log("The 'maxRetryAttempts' rollback retry parameter cannot be less then 1.", bundleName);
     return false;
   }
 
@@ -314,7 +314,7 @@ const sync = (() => {
         try {
           syncStatusChangeCallback(...args);
         } catch (error) {
-          log(`An error has occurred : ${error.stack}`);
+          log(`An error has occurred : ${error.stack}`, options.bundleName);
         }
       }
     }
@@ -324,7 +324,7 @@ const sync = (() => {
         try {
           downloadProgressCallback(...args);
         } catch (error) {
-          log(`An error has occurred: ${error.stack}`);
+          log(`An error has occurred: ${error.stack}`, options.bundleName);
         }
       }
     }
@@ -367,61 +367,58 @@ async function syncInternal(options = {}, syncStatusChangeCallback, downloadProg
     updateDialog: null,
     ...options
   };
-  
+  const bundleName = syncOptions.bundleName;
   syncStatusChangeCallback = typeof syncStatusChangeCallback === "function"
     ? syncStatusChangeCallback
     : (syncStatus) => {
         switch(syncStatus) {
           case CodePush.SyncStatus.CHECKING_FOR_UPDATE:
-            log("Checking for update.");
+            log("Checking for update.", bundleName);
             break;
           case CodePush.SyncStatus.AWAITING_USER_ACTION:
-            log("Awaiting user action.");
+            log("Checking for update.", bundleName);
             break;
           case CodePush.SyncStatus.DOWNLOADING_PACKAGE:
-            log("Downloading package.");
+            log("Downloading package.", bundleName);
             break;
           case CodePush.SyncStatus.INSTALLING_UPDATE:
-            log("Installing update.");
+            log("Installing update.", bundleName);
             break;
           case CodePush.SyncStatus.UP_TO_DATE:
-            log("App is up to date.");
+            log("App is up to date.", bundleName);
             break;
           case CodePush.SyncStatus.UPDATE_IGNORED:
-            log("User cancelled the update.");
+            log("User cancelled the update.", bundleName);
             break;
           case CodePush.SyncStatus.UPDATE_INSTALLED:
             if (resolvedInstallMode == CodePush.InstallMode.ON_NEXT_RESTART) {
-              log("Update is installed and will be run on the next app restart.");
+              log("Update is installed and will be run on the next app restart.", bundleName);
             } else if (resolvedInstallMode == CodePush.InstallMode.ON_NEXT_RESUME) {
               if (syncOptions.minimumBackgroundDuration > 0) {
-                log(`Update is installed and will be run after the app has been in the background for at least ${syncOptions.minimumBackgroundDuration} seconds.`);
+                log(`Update is installed and will be run after the app has been in the background for at least ${syncOptions.minimumBackgroundDuration} seconds.`, bundleName);
               } else {
-                log("Update is installed and will be run when the app next resumes.");
+                log("Update is installed and will be run when the app next resumes.", bundleName);
               }
             }
             break;
           case CodePush.SyncStatus.UNKNOWN_ERROR:
-            log("An unknown error occurred.");
+            log("An unknown error occurred.", bundleName);
             break;
         }
       };
 
   try {
-    await CodePush.notifyApplicationReady(syncOptions.bundleName);
+    await CodePush.notifyApplicationReady(bundleName);
     syncStatusChangeCallback(CodePush.SyncStatus.CHECKING_FOR_UPDATE);
-    const remotePackage = await checkForUpdate({ 
-      deploymentKey: syncOptions.deploymentKey, 
-      bundleName: syncOptions.bundleName 
-    }, handleBinaryVersionMismatchCallback);
+    const remotePackage = await checkForUpdate({ deploymentKey: syncOptions.deploymentKey, bundleName }, handleBinaryVersionMismatchCallback);
     const doDownloadAndInstall = async () => {
       syncStatusChangeCallback(CodePush.SyncStatus.DOWNLOADING_PACKAGE);
-      const localPackage = await remotePackage.download(downloadProgressCallback, syncOptions.bundleName);
+      const localPackage = await remotePackage.download(downloadProgressCallback, bundleName);
       // Determine the correct install mode based on whether the update is mandatory or not.
       resolvedInstallMode = localPackage.isMandatory ? syncOptions.mandatoryInstallMode : syncOptions.installMode;
 
       syncStatusChangeCallback(CodePush.SyncStatus.INSTALLING_UPDATE);
-      await localPackage.install(resolvedInstallMode, syncOptions.bundleName, syncOptions.minimumBackgroundDuration, () => {
+      await localPackage.install(resolvedInstallMode, bundleName, syncOptions.minimumBackgroundDuration, () => {
         syncStatusChangeCallback(CodePush.SyncStatus.UPDATE_INSTALLED);
       });
 
@@ -430,7 +427,7 @@ async function syncInternal(options = {}, syncStatusChangeCallback, downloadProg
     const updateShouldBeIgnored = await shouldUpdateBeIgnored(remotePackage, syncOptions);
     if (!remotePackage || updateShouldBeIgnored) {
       if (updateShouldBeIgnored) {
-          log("An update is available, but it is being ignored due to having been previously rolled back.");
+          log("An update is available, but it is being ignored due to having been previously rolled back.", bundleName);
       }
       const currentPackage = await CodePush.getCurrentPackage(bundleName);
       if (currentPackage && currentPackage.isPending) {
@@ -496,7 +493,7 @@ async function syncInternal(options = {}, syncStatusChangeCallback, downloadProg
     }
   } catch (error) {
     syncStatusChangeCallback(CodePush.SyncStatus.UNKNOWN_ERROR);
-    log(error.message);
+    log(error.message, bundleName);
     throw error;
   }
 };
