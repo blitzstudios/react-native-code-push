@@ -249,9 +249,9 @@ public class CodePushUpdateManager {
                 }
 
                 if (isDiffUpdate) {
-                    CodePushUtils.log("Applying diff update." + mResourceName);
+                    CodePushUtils.log("Applying diff update.", mResourceName);
                 } else {
-                    CodePushUtils.log("Applying full update." + mResourceName);
+                    CodePushUtils.log("Applying full update.", mResourceName);
                 }
 
                 boolean isSignatureVerificationEnabled = (stringPublicKey != null);
@@ -275,7 +275,7 @@ public class CodePushUpdateManager {
                     if (isSignatureAppearedInBundle) {
                         CodePushUtils.log(
                                 "Warning! JWT signature exists in codepush update but code integrity check couldn't be performed because there is no public key configured. " +
-                                "Please ensure that public key is properly configured within your application."
+                                "Please ensure that public key is properly configured within your application.", mResourceName
                         );
                         CodePushUpdateUtils.verifyFolderHash(newUpdateFolderPath, newUpdateHash);
                     } else {

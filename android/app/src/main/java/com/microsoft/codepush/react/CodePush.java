@@ -205,7 +205,7 @@ public class CodePush implements ReactPackage {
             packageFilePath = moduleInstance.updateManager.getCurrentPackageBundlePath(getBundleName(resourceName));
         } catch (CodePushMalformedDataException e) {
             // We need to recover the app in case 'codepush.json' is corrupted
-            CodePushUtils.log(e.getMessage());
+            CodePushUtils.log(e.getMessage(), resourceName);
             clearUpdates(resourceName);
         }
 
@@ -248,7 +248,7 @@ public class CodePush implements ReactPackage {
         if (pendingUpdate != null) {
             JSONObject packageMetadata = moduleInstance.updateManager.getCurrentPackage();
             if (packageMetadata == null || !isPackageBundleLatest(packageMetadata) && hasBinaryVersionChanged(packageMetadata)) {
-                CodePushUtils.log("Skipping initializeUpdateAfterRestart(), binary version is newer");
+                CodePushUtils.log("Skipping initializeUpdateAfterRestart(), binary version is newer", resourceName);
                 return;
             }
 
@@ -257,7 +257,7 @@ public class CodePush implements ReactPackage {
                 if (updateIsLoading) {
                     // Pending update was initialized, but notifyApplicationReady was not called.
                     // Therefore, deduce that it is a broken update and rollback.
-                    CodePushUtils.log("Update did not finish loading the last time, rolling back to a previous version.");
+                    CodePushUtils.log("Update did not finish loading the last time, rolling back to a previous version.", resourceName);
                     sNeedToReportRollback = true;
                     rollbackPackage(moduleInstance);
                 } else {
