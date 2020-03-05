@@ -85,7 +85,7 @@ async function checkForUpdate({ deploymentKey = null, bundleName = '' }, handleB
     return null;
   } else {
     const remotePackage = { ...update, ...PackageMixins.remote(sdk.reportStatusDownload) };
-    remotePackage.failedInstall = await NativeCodePush.isFailedUpdate(remotePackage.packageHash);
+    remotePackage.failedInstall = await NativeCodePush.isFailedUpdate(remotePackage.packageHash, bundleName);
     remotePackage.deploymentKey = deploymentKey || nativeConfig.deploymentKey;
     return remotePackage;
   }
@@ -113,7 +113,7 @@ async function getUpdateMetadata(updateState, bundleName) {
   let updateMetadata = await NativeCodePush.getUpdateMetadata(updateState || CodePush.UpdateState.RUNNING, bundleName);
   if (updateMetadata) {
     updateMetadata = {...PackageMixins.local, ...updateMetadata};
-    updateMetadata.failedInstall = await NativeCodePush.isFailedUpdate(updateMetadata.packageHash);
+    updateMetadata.failedInstall = await NativeCodePush.isFailedUpdate(updateMetadata.packageHash, bundleName);
     updateMetadata.isFirstRun = await NativeCodePush.isFirstRun(updateMetadata.packageHash, bundleName);
   }
   return updateMetadata;
@@ -175,7 +175,7 @@ const notifyApplicationReady = (() => {
 })();
 
 async function notifyApplicationReadyInternal(bundleName) {
-  await NativeCodePush.notifyApplicationReady();
+  await NativeCodePush.notifyApplicationReady(bundleName);
   const statusReport = await NativeCodePush.getNewStatusReport(bundleName);
   statusReport && tryReportStatus(statusReport, null, bundleName); // Don't wait for this to complete.
 
@@ -198,7 +198,7 @@ async function tryReportStatus(statusReport, resumeListener, bundleName) {
         log(`Reporting CodePush update success (${label})`);
       } else {
         log(`Reporting CodePush update rollback (${label})`);
-        await NativeCodePush.setLatestRollbackInfo(statusReport.package.packageHash);
+        await NativeCodePush.setLatestRollbackInfo(statusReport.package.packageHash, bundleName);
       }
 
       config.deploymentKey = statusReport.package.deploymentKey;
@@ -206,11 +206,11 @@ async function tryReportStatus(statusReport, resumeListener, bundleName) {
       await sdk.reportStatusDeploy(statusReport.package, statusReport.status, previousLabelOrAppVersion, previousDeploymentKey);
     }
 
-    NativeCodePush.recordStatusReported(statusReport);
+    NativeCodePush.recordStatusReported(bundleName, statusReport);
     resumeListener && AppState.removeEventListener("change", resumeListener);
   } catch (e) {
     log(`Report status failed: ${JSON.stringify(statusReport)}`);
-    NativeCodePush.saveStatusReportForRetry(statusReport);
+    NativeCodePush.saveStatusReportForRetry(bundleName, statusReport);
     // Try again when the app resumes
     if (!resumeListener) {
       resumeListener = async (newState) => {
@@ -249,7 +249,7 @@ async function shouldUpdateBeIgnored(remotePackage, syncOptions) {
     return true;
   }
   
-  const latestRollbackInfo = await NativeCodePush.getLatestRollbackInfo();
+  const latestRollbackInfo = await NativeCodePush.getLatestRollbackInfo(syncOptions.bundleName);
   if (!validateLatestRollbackInfo(latestRollbackInfo, remotePackage.packageHash)) {
     log("The latest rollback info is not valid.");
     return true;
