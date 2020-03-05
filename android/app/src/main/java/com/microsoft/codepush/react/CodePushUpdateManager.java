@@ -15,11 +15,11 @@ import java.nio.ByteBuffer;
 public class CodePushUpdateManager {
 
     private String mDocumentsDirectory;
-    private String mBundleName;
+    private String mResourceName;
 
-    public CodePushUpdateManager(String documentsDirectory, String bundleName) {
+    public CodePushUpdateManager(String documentsDirectory, String resourceName) {
         mDocumentsDirectory = documentsDirectory;
-        mBundleName = bundleName;
+        mResourceName = resourceName;
     }
 
     private String getDownloadFilePath() {
@@ -36,7 +36,7 @@ public class CodePushUpdateManager {
 
     private String getCodePushPath() {
         String codePushPath = CodePushUtils.appendPathComponent(getDocumentsDirectory(), 
-            CodePushConstants.CODE_PUSH_FOLDER_PREFIX + "/" + mBundleName);
+            CodePushConstants.CODE_PUSH_FOLDER_PREFIX + "/" + mResourceName);
         if (CodePush.isUsingTestConfiguration()) {
             codePushPath = CodePushUtils.appendPathComponent(codePushPath, "TestPackages");
         }
@@ -249,9 +249,9 @@ public class CodePushUpdateManager {
                 }
 
                 if (isDiffUpdate) {
-                    CodePushUtils.log("Applying diff update.");
+                    CodePushUtils.log("Applying diff update." + mResourceName);
                 } else {
-                    CodePushUtils.log("Applying full update.");
+                    CodePushUtils.log("Applying full update." + mResourceName);
                 }
 
                 boolean isSignatureVerificationEnabled = (stringPublicKey != null);
