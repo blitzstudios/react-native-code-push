@@ -469,14 +469,14 @@ public class CodePushNativeModule extends ReactContextBaseJavaModule {
                                     appSuspendHandler.removeCallbacks(loadBundleRunnable);
                                     // As of RN 36, the resume handler fires immediately if the app is in
                                     // the foreground, so explicitly wait for it to be backgrounded first
-                                    if (lastPausedDate != null) {
-                                        long durationInBackground = (new Date().getTime() - lastPausedDate.getTime()) / 1000;
-                                        if (installMode == CodePushInstallMode.IMMEDIATE.getValue()
-                                                || durationInBackground >= CodePushNativeModule.this.mMinimumBackgroundDuration) {
-                                            CodePushUtils.log("Loading bundle on resume", resourceName);
-                                            loadBundle(resourceName);
-                                        }
-                                    }
+                                    // if (lastPausedDate != null) {
+                                    //     long durationInBackground = (new Date().getTime() - lastPausedDate.getTime()) / 1000;
+                                    //     if (installMode == CodePushInstallMode.IMMEDIATE.getValue()
+                                    //             || durationInBackground >= CodePushNativeModule.this.mMinimumBackgroundDuration) {
+                                    //         CodePushUtils.log("Loading bundle on resume", resourceName);
+                                    //         loadBundle(resourceName);
+                                    //     }
+                                    // }
                                 }
 
                                 @Override
