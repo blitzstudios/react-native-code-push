@@ -243,7 +243,6 @@ public class CodePush implements ReactPackage {
         // Reset the state which indicates that
         // the app was just freshly updated.
         mDidUpdate = false;
-
         JSONObject pendingUpdate = moduleInstance.settingsManager.getPendingUpdate();
         if (pendingUpdate != null) {
             JSONObject packageMetadata = moduleInstance.updateManager.getCurrentPackage();
