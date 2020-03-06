@@ -211,14 +211,14 @@ public class CodePush implements ReactPackage {
 
         if (packageFilePath == null) {
             // There has not been any downloaded updates.
-            CodePushUtils.logBundleUrl(binaryJsBundleUrl);
+            CodePushUtils.logBundleUrl(binaryJsBundleUrl, resourceName);
             sIsRunningBinaryVersion = true;
             return binaryJsBundleUrl;
         }
 
         JSONObject packageMetadata = moduleInstance.updateManager.getCurrentPackage();
         if (isPackageBundleLatest(packageMetadata)) {
-            CodePushUtils.logBundleUrl(packageFilePath);
+            CodePushUtils.logBundleUrl(packageFilePath, resourceName);
             sIsRunningBinaryVersion = false;
             return packageFilePath;
         } else {
@@ -228,7 +228,7 @@ public class CodePush implements ReactPackage {
                 this.clearUpdates(resourceName);
             }
 
-            CodePushUtils.logBundleUrl(binaryJsBundleUrl);
+            CodePushUtils.logBundleUrl(binaryJsBundleUrl, resourceName);
             sIsRunningBinaryVersion = true;
             return binaryJsBundleUrl;
         }

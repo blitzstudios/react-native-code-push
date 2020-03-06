@@ -217,8 +217,8 @@ public class CodePushUtils {
         Log.e(CodePushConstants.REACT_NATIVE_LOG_TAG, "[CodePush] [" + resourceName + "] Exception", tr);
     }
 
-    public static void logBundleUrl(String path) {
-        log("Loading JS bundle from \"" + path + "\"");
+    public static void logBundleUrl(String path, String resourceName) {
+        log("Loading JS bundle from \"" + path + "\"", resourceName);
     }
 
     public static void setJSONValueForKey(JSONObject json, String key, Object value) {
