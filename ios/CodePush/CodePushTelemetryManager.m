@@ -99,7 +99,8 @@ static NSString *const StatusKey = @"status";
     return nil;
 }
 
-+ (void)recordStatusReported:(NSDictionary *)statusReport
++ (void)recordStatusReported:(NSString *)resourceName
+                statusReport:(NSDictionary *)statusReport
 {
     // We don't need to record rollback reports, so exit early if that's what was specified.
     if ([DeploymentFailed isEqualToString:statusReport[StatusKey]]) {

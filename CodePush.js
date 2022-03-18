@@ -524,7 +524,7 @@ function codePushify(options = {}) {
     const extended = class CodePushComponent extends React.Component {
       componentDidMount() {
         if (options.checkFrequency === CodePush.CheckFrequency.MANUAL) {
-          CodePush.notifyAppReady();
+          CodePush.notifyAppReady(options.mainBundleName);
         } else {
           let rootComponentInstance = this.refs.rootComponent;
 

@@ -46,7 +46,7 @@
  * This method checks to see whether a specific package hash
  * has previously failed installation.
  */
-+ (BOOL)isFailedHash:(NSString*)packageHash;
++ (BOOL)isFailedHash:(NSString*)packageHash resourceName:(NSString*)resourceName;
 
 
 /*
@@ -164,7 +164,7 @@ failCallback:(void (^)(NSError *err))failCallback;
 + (NSDictionary *)getRetryStatusReport;
 + (NSDictionary *)getRollbackReport:(NSDictionary *)lastFailedPackage;
 + (NSDictionary *)getUpdateReport:(NSDictionary *)currentPackage;
-+ (void)recordStatusReported:(NSDictionary *)statusReport;
++ (void)recordStatusReported:(NSString *)resourceName statusReport:(NSDictionary *)statusReport;
 + (void)saveStatusReportForRetry:(NSDictionary *)statusReport;
 
 @end

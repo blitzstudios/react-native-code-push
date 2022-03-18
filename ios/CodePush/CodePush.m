@@ -343,7 +343,7 @@ static NSString *const LatestRollbackCountKey = @"count";
 - (void)initializeUpdateAfterRestart:(NSString*)resourceName
 {
 #ifdef DEBUG
-    [self clearDebugUpdates];
+    [self clearDebugUpdates:resourceName];
 #endif
     self.paused = YES;
     NSUserDefaults *preferences = [NSUserDefaults standardUserDefaults];
@@ -428,7 +428,7 @@ static NSString *const LatestRollbackCountKey = @"count";
  * This method checks to see whether a specific package hash
  * has previously failed installation.
  */
-+ (BOOL)isFailedHash:(NSString*)packageHash
++ (BOOL)isFailedHash:(NSString*)packageHash resourceName:(NSString*)resourceName
 {
     NSUserDefaults *preferences = [NSUserDefaults standardUserDefaults];
     NSMutableArray *failedUpdates = [preferences objectForKey:FailedUpdatesKey];
@@ -518,7 +518,7 @@ static NSString *const LatestRollbackCountKey = @"count";
         }
     } else {
         // Write the current package's metadata to the "failed list"
-        [self saveFailedUpdate:failedPackage];
+        [self saveFailedUpdate:failedPackage resourceName:(NSString *)resourceName];
     }
 
     // Rollback to the previous version and de-register the new update
@@ -532,9 +532,9 @@ static NSString *const LatestRollbackCountKey = @"count";
  * to store its hash so that it can be ignored on future
  * attempts to check the server for an update.
  */
-- (void)saveFailedUpdate:(NSDictionary *)failedPackage
+- (void)saveFailedUpdate:(NSDictionary *)failedPackage resourceName:(NSString *)resourceName
 {
-    if ([[self class] isFailedHash:[failedPackage objectForKey:PackageHashKey]]) {
+    if ([[self class] isFailedHash:[failedPackage objectForKey:PackageHashKey] resourceName:resourceName]) {
         return;
     }
     
@@ -602,7 +602,7 @@ static NSString *const LatestRollbackCountKey = @"count";
 
 // These two handlers will only be registered when there is
 // a resume-based update still pending installation.
-- (void)applicationWillEnterForeground:(NSString *)resourceName
+- (void)applicationWillEnterForeground
 {
     if (_appSuspendTimer) {
         [_appSuspendTimer invalidate];
@@ -616,7 +616,7 @@ static NSString *const LatestRollbackCountKey = @"count";
     }
 
     if (durationInBackground >= _minimumBackgroundDuration) {
-        [self loadBundle:resourceName];
+        [self loadBundle:@"index.ios"];
     }
 }
 
@@ -700,7 +700,7 @@ RCT_EXPORT_METHOD(downloadUpdate:(NSDictionary*)updatePackage
         // The download failed
         failCallback:^(NSError *err) {
             if ([CodePushErrorUtils isCodePushError:err]) {
-                [self saveFailedUpdate:mutableUpdatePackage];
+                [self saveFailedUpdate:mutableUpdatePackage resourceName:resourceName];
             }
             // Stop observing frame updates if the download fails.
             _didUpdateProgress = NO;
@@ -850,10 +850,11 @@ RCT_EXPORT_METHOD(installUpdate:(NSDictionary*)updatePackage
  * module, and is only used internally to populate the RemotePackage.failedInstall property.
  */
 RCT_EXPORT_METHOD(isFailedUpdate:(NSString *)packageHash
+                    resourceName:(NSString *)resourceName
                          resolve:(RCTPromiseResolveBlock)resolve
                           reject:(RCTPromiseRejectBlock)reject)
 {
-    BOOL isFailedHash = [[self class] isFailedHash:packageHash];
+    BOOL isFailedHash = [[self class] isFailedHash:packageHash resourceName:resourceName];
     resolve(@(isFailedHash));
 }
 
@@ -893,7 +894,8 @@ RCT_EXPORT_METHOD(isFirstRun:(NSString *)packageHash
 /*
  * This method is the native side of the CodePush.notifyApplicationReady() method.
  */
-RCT_EXPORT_METHOD(notifyApplicationReady:(RCTPromiseResolveBlock)resolve
+RCT_EXPORT_METHOD(notifyApplicationReady:(NSString*)resourceName
+                                 resolve:(RCTPromiseResolveBlock)resolve
                                 rejecter:(RCTPromiseRejectBlock)reject)
 {
     [CodePush removePendingUpdate];
@@ -987,9 +989,10 @@ RCT_EXPORT_METHOD(getNewStatusReport:(NSString *)resourceName
     resolve(nil);
 }
 
-RCT_EXPORT_METHOD(recordStatusReported:(NSDictionary *)statusReport)
+RCT_EXPORT_METHOD(recordStatusReported:(NSString *)resourceName
+                          statusReport:(NSDictionary *)statusReport)
 {
-    [CodePushTelemetryManager recordStatusReported:statusReport];
+    [CodePushTelemetryManager recordStatusReported:resourceName statusReport:statusReport];
 }
 
 RCT_EXPORT_METHOD(saveStatusReportForRetry:(NSDictionary *)statusReport)
