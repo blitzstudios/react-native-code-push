@@ -32,6 +32,6 @@ public class CodePushBuilder {
     }
 
     public CodePush build() {
-        return new CodePush(this.mDeploymentKey, this.mContext, this.mIsDebugMode, this.mServerUrl, this.mPublicKeyResourceDescriptor);
+        return new CodePush(this.mContext, this.mServerUrl);
     }
 }

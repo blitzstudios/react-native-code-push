@@ -205,12 +205,20 @@ public class CodePushUtils {
         Log.d(CodePushConstants.REACT_NATIVE_LOG_TAG, "[CodePush] " + message);
     }
 
+    public static void log(String message, String resourceName) {
+        Log.d(CodePushConstants.REACT_NATIVE_LOG_TAG, "[CodePush] [" + resourceName + "] " + message);
+    }
+
     public static void log(Throwable tr) {
         Log.e(CodePushConstants.REACT_NATIVE_LOG_TAG, "[CodePush] Exception", tr);
     }
 
-    public static void logBundleUrl(String path) {
-        log("Loading JS bundle from \"" + path + "\"");
+    public static void log(Throwable tr, String resourceName) {
+        Log.e(CodePushConstants.REACT_NATIVE_LOG_TAG, "[CodePush] [" + resourceName + "] Exception", tr);
+    }
+
+    public static void logBundleUrl(String path, String resourceName) {
+        log("Loading JS bundle from \"" + path + "\"", resourceName);
     }
 
     public static void setJSONValueForKey(JSONObject json, String key, Object value) {

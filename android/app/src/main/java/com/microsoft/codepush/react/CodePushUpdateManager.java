@@ -15,9 +15,11 @@ import java.nio.ByteBuffer;
 public class CodePushUpdateManager {
 
     private String mDocumentsDirectory;
+    private String mResourceName;
 
-    public CodePushUpdateManager(String documentsDirectory) {
+    public CodePushUpdateManager(String documentsDirectory, String resourceName) {
         mDocumentsDirectory = documentsDirectory;
+        mResourceName = resourceName;
     }
 
     private String getDownloadFilePath() {
@@ -33,7 +35,8 @@ public class CodePushUpdateManager {
     }
 
     private String getCodePushPath() {
-        String codePushPath = CodePushUtils.appendPathComponent(getDocumentsDirectory(), CodePushConstants.CODE_PUSH_FOLDER_PREFIX);
+        String codePushPath = CodePushUtils.appendPathComponent(getDocumentsDirectory(), 
+            CodePushConstants.CODE_PUSH_FOLDER_PREFIX + "/" + mResourceName);
         if (CodePush.isUsingTestConfiguration()) {
             codePushPath = CodePushUtils.appendPathComponent(codePushPath, "TestPackages");
         }
@@ -246,9 +249,9 @@ public class CodePushUpdateManager {
                 }
 
                 if (isDiffUpdate) {
-                    CodePushUtils.log("Applying diff update.");
+                    CodePushUtils.log("Applying diff update.", mResourceName);
                 } else {
-                    CodePushUtils.log("Applying full update.");
+                    CodePushUtils.log("Applying full update.", mResourceName);
                 }
 
                 boolean isSignatureVerificationEnabled = (stringPublicKey != null);
@@ -272,7 +275,7 @@ public class CodePushUpdateManager {
                     if (isSignatureAppearedInBundle) {
                         CodePushUtils.log(
                                 "Warning! JWT signature exists in codepush update but code integrity check couldn't be performed because there is no public key configured. " +
-                                "Please ensure that public key is properly configured within your application."
+                                "Please ensure that public key is properly configured within your application.", mResourceName
                         );
                         CodePushUpdateUtils.verifyFolderHash(newUpdateFolderPath, newUpdateHash);
                     } else {

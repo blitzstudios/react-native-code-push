@@ -12,6 +12,7 @@ import org.json.JSONObject;
 
 public class CodePushTelemetryManager {
     private SharedPreferences mSettings;
+    private String mResourceName;
     private final String APP_VERSION_KEY = "appVersion";
     private final String DEPLOYMENT_FAILED_STATUS = "DeploymentFailed";
     private final String DEPLOYMENT_KEY_KEY = "deploymentKey";
@@ -24,8 +25,9 @@ public class CodePushTelemetryManager {
     private final String RETRY_DEPLOYMENT_REPORT_KEY = "CODE_PUSH_RETRY_DEPLOYMENT_REPORT";
     private final String STATUS_KEY = "status";
 
-    public CodePushTelemetryManager(Context applicationContext) {
+    public CodePushTelemetryManager(Context applicationContext, String resourceName) {
         mSettings = applicationContext.getSharedPreferences(CodePushConstants.CODE_PUSH_PREFERENCES, 0);
+        mResourceName = resourceName;
     }
 
     public WritableMap getBinaryUpdateReport(String appVersion) {
