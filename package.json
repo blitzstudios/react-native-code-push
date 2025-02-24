@@ -1,6 +1,6 @@
 {
   "name": "react-native-code-push",
-  "version": "9.0.1",
+  "version": "1.0.2",
   "description": "React Native plugin for the CodePush service",
   "main": "CodePush.js",
   "typings": "typings/react-native-code-push.d.ts",
@@ -65,7 +65,7 @@
   },
   "rnpm": {
     "android": {
-      "packageInstance": "new CodePush(getResources().getString(R.string.CodePushDeploymentKey), getApplicationContext(), BuildConfig.DEBUG)"
+      "packageInstance": "new CodePush(getApplicationContext(), BuildConfig.DEBUG)"
     },
     "ios": {
       "sharedLibraries": [

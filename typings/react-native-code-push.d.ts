@@ -109,6 +109,13 @@ export interface SyncOptions {
     deploymentKey?: string;
 
     /**
+     * Specifies the server URL you want to query for an update against. By default, this value is derived from the Info.plist
+     * file (iOS) and MainActivity.java file (Android), but this option allows you to override it from the script-side if you need to
+     * dynamically use a different server for a specific call to sync.
+     */
+    serverUrl?: string;
+
+    /**
      * Specifies when you would like to install optional updates (i.e. those that aren't marked as mandatory).
      * Defaults to codePush.InstallMode.ON_NEXT_RESTART.
      */
@@ -260,7 +267,7 @@ declare namespace CodePush {
      * 
      * @param handleBinaryVersionMismatchCallback An optional callback for handling target binary version mismatch
      */
-    function checkForUpdate(deploymentKey?: string, handleBinaryVersionMismatchCallback?: HandleBinaryVersionMismatchCallback): Promise<RemotePackage | null>;
+    function checkForUpdate(deploymentKey?: string, serverUrl?: string, handleBinaryVersionMismatchCallback?: HandleBinaryVersionMismatchCallback): Promise<RemotePackage | null>;
 
     /**
      * Retrieves the metadata for an installed update (e.g. description, mandatory).

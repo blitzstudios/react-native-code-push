@@ -74,8 +74,8 @@ static BOOL testConfigurationFlag = NO;
 // These values are used to save the NS bundle, name, extension and subdirectory
 // for the JS bundle in the binary.
 static NSBundle *bundleResourceBundle = nil;
-static NSString *bundleResourceExtension = @"jsbundle";
-static NSString *bundleResourceName = @"main";
+static NSString *bundleResourceExtension = @"bundle";
+static NSString *bundleResourceName = @"index.ios";
 static NSString *bundleResourceSubdirectory = nil;
 
 // These keys represent the names we use to store information about the latest rollback

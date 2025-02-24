@@ -3,15 +3,13 @@ package com.microsoft.codepush.react;
 import android.content.Context;
 
 public class CodePushBuilder {
-    private String mDeploymentKey;
     private Context mContext;
 
     private boolean mIsDebugMode;
     private String mServerUrl;
     private Integer mPublicKeyResourceDescriptor;
 
-    public CodePushBuilder(String deploymentKey, Context context) {
-        this.mDeploymentKey = deploymentKey;
+    public CodePushBuilder(Context context) {
         this.mContext = context;
         this.mServerUrl = CodePush.getServiceUrl();
     }
@@ -32,6 +30,6 @@ public class CodePushBuilder {
     }
 
     public CodePush build() {
-        return new CodePush(this.mDeploymentKey, this.mContext, this.mIsDebugMode, this.mServerUrl, this.mPublicKeyResourceDescriptor);
+        return new CodePush(this.mContext, this.mIsDebugMode, this.mServerUrl, this.mPublicKeyResourceDescriptor);
     }
 }
