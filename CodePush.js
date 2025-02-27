@@ -544,9 +544,7 @@ function codePushify(options = {}) {
       }
 
       componentDidMount() {
-        if (options.checkFrequency === CodePush.CheckFrequency.MANUAL) {
-          CodePush.notifyAppReady();
-        } else {
+        if (options.checkFrequency !== CodePush.CheckFrequency.MANUAL) {
           const rootComponentInstance = this.rootComponentRef.current;
 
           let syncStatusCallback;
