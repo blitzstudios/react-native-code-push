@@ -264,7 +264,7 @@ declare namespace CodePush {
      * Asks the CodePush service whether the configured app deployment has an update available.
      *
      * @param deploymentKey The deployment key to use to query the CodePush server for an update.
-     * 
+     * @param serverUrl The server URL to use to query the CodePush server for an update.
      * @param handleBinaryVersionMismatchCallback An optional callback for handling target binary version mismatch
      */
     function checkForUpdate(deploymentKey?: string, serverUrl?: string, handleBinaryVersionMismatchCallback?: HandleBinaryVersionMismatchCallback): Promise<RemotePackage | null>;
@@ -278,8 +278,11 @@ declare namespace CodePush {
 
     /**
      * Notifies the CodePush runtime that an installed update is considered successful.
+     *
+     * @param deploymentKey The deployment key to use to notify the CodePush server that an installed update is considered successful.
+     * @param serverUrl The server URL to use to notify the CodePush server that an installed update is considered successful.
      */
-    function notifyAppReady(): Promise<StatusReport|void>;
+    function notifyAppReady(deploymentKey?: string, serverUrl?: string): Promise<StatusReport|void>;
 
     /**
      * Allow CodePush to restart the app.

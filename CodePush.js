@@ -109,7 +109,7 @@ const getConfiguration = (() => {
 })();
 
 async function getCurrentPackage() {
-  return await getUpdateMetadata(CodePush.UpdateState.LATEST);
+  return getUpdateMetadata(CodePush.UpdateState.LATEST);
 }
 
 async function getUpdateMetadata(updateState) {
@@ -168,25 +168,35 @@ function getPromisifiedSdk(requestFetchAdapter, config) {
 // in the lifetime of this module instance.
 const notifyApplicationReady = (() => {
   let notifyApplicationReadyPromise;
-  return () => {
+  return (deploymentKey, serverUrl) => {
     if (!notifyApplicationReadyPromise) {
-      notifyApplicationReadyPromise = notifyApplicationReadyInternal();
+      notifyApplicationReadyPromise = notifyApplicationReadyInternal(deploymentKey, serverUrl);
     }
 
     return notifyApplicationReadyPromise;
   };
 })();
 
-async function notifyApplicationReadyInternal() {
+async function notifyApplicationReadyInternal(deploymentKey, serverUrl) {
   await NativeCodePush.notifyApplicationReady();
   const statusReport = await NativeCodePush.getNewStatusReport();
-  statusReport && tryReportStatus(statusReport); // Don't wait for this to complete.
+  statusReport && tryReportStatus(statusReport, null, deploymentKey, serverUrl); // Don't wait for this to complete.
 
   return statusReport;
 }
 
-async function tryReportStatus(statusReport, retryOnAppResume) {
-  const config = await getConfiguration();
+async function tryReportStatus(statusReport, retryOnAppResume, deploymentKey, serverUrl) {
+  let config = await getConfiguration();
+  
+  // Only override config values if they are provided
+  if (serverUrl) {
+    config.serverUrl = serverUrl;
+  }
+  
+  if (deploymentKey) {
+    config.deploymentKey = deploymentKey;
+  }
+  
   const previousLabelOrAppVersion = statusReport.previousLabelOrAppVersion;
   const previousDeploymentKey = statusReport.previousDeploymentKey || config.deploymentKey;
   try {
@@ -216,7 +226,7 @@ async function tryReportStatus(statusReport, retryOnAppResume) {
     NativeCodePush.recordStatusReported(statusReport);
     retryOnAppResume && retryOnAppResume.remove();
   } catch (e) {
-    log(`Report status failed: ${JSON.stringify(statusReport)}`);
+    log(`Report status failed: ${JSON.stringify(statusReport)} ${e}`);
     NativeCodePush.saveStatusReportForRetry(statusReport);
     // Try again when the app resumes
     if (!retryOnAppResume) {
@@ -224,7 +234,7 @@ async function tryReportStatus(statusReport, retryOnAppResume) {
         if (newState !== "active") return;
         const refreshedStatusReport = await NativeCodePush.getNewStatusReport();
         if (refreshedStatusReport) {
-          tryReportStatus(refreshedStatusReport, resumeListener);
+          tryReportStatus(refreshedStatusReport, resumeListener, deploymentKey, serverUrl);
         } else {
           resumeListener && resumeListener.remove();
         }
@@ -369,6 +379,7 @@ async function syncInternal(options = {}, syncStatusChangeCallback, downloadProg
   let resolvedInstallMode;
   const syncOptions = {
     deploymentKey: null,
+    serverUrl: null,
     ignoreFailedUpdates: true,
     rollbackRetryOptions: null,
     installMode: CodePush.InstallMode.ON_NEXT_RESTART,
@@ -418,7 +429,7 @@ async function syncInternal(options = {}, syncStatusChangeCallback, downloadProg
       };
 
   try {
-    await CodePush.notifyApplicationReady();
+    await CodePush.notifyApplicationReady(syncOptions.deploymentKey, syncOptions.serverUrl);
 
     syncStatusChangeCallback(CodePush.SyncStatus.CHECKING_FOR_UPDATE);
     const remotePackage = await checkForUpdate(syncOptions.deploymentKey, syncOptions.serverUrl, handleBinaryVersionMismatchCallback);
