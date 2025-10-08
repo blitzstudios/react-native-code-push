@@ -1,18 +1,11 @@
 package com.microsoft.codepush.react;
-
-import android.app.Activity;
 import android.content.SharedPreferences;
+import android.content.Intent;
 import android.os.AsyncTask;
 import android.os.Handler;
 import android.os.Looper;
-import android.provider.Settings;
-import android.view.View;
 
-import com.facebook.react.ReactApplication;
-import com.facebook.react.ReactInstanceManager;
-import com.facebook.react.ReactRootView;
 import com.facebook.react.bridge.Arguments;
-import com.facebook.react.bridge.JSBundleLoader;
 import com.facebook.react.bridge.LifecycleEventListener;
 import com.facebook.react.bridge.Promise;
 import com.facebook.react.bridge.ReactApplicationContext;
@@ -29,7 +22,6 @@ import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.io.IOException;
-import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
@@ -92,106 +84,23 @@ public class CodePushNativeModule extends ReactContextBaseJavaModule {
         return "CodePush";
     }
 
-    private void loadBundleLegacy() {
-        final Activity currentActivity = getCurrentActivity();
-        if (currentActivity == null) {
-            // The currentActivity can be null if it is backgrounded / destroyed, so we simply
-            // no-op to prevent any null pointer exceptions.
-            return;
-        }
-        mCodePush.invalidateCurrentInstance();
-
-        currentActivity.runOnUiThread(new Runnable() {
-            @Override
-            public void run() {
-                currentActivity.recreate();
-            }
-        });
-    }
-
-    // Use reflection to find and set the appropriate fields on ReactInstanceManager. See #556 for a proposal for a less brittle way
-    // to approach this.
-    private void setJSBundle(ReactInstanceManager instanceManager, String latestJSBundleFile) throws IllegalAccessException {
+    private void performHardRestart() {
         try {
-            JSBundleLoader latestJSBundleLoader;
-            if (latestJSBundleFile.toLowerCase().startsWith("assets://")) {
-                latestJSBundleLoader = JSBundleLoader.createAssetLoader(getReactApplicationContext(), latestJSBundleFile, false);
+            ReactApplicationContext context = getReactApplicationContext();
+            Intent intent = context.getPackageManager().getLaunchIntentForPackage(context.getPackageName());
+
+            if (intent != null) {
+                Intent mainIntent = Intent.makeRestartActivityTask(intent.getComponent());
+                context.startActivity(mainIntent);
+                Runtime.getRuntime().exit(0);
             } else {
-                latestJSBundleLoader = JSBundleLoader.createFileLoader(latestJSBundleFile);
+                CodePushUtils.log("Launch intent not found for package: " + context.getPackageName());
             }
-
-            Field bundleLoaderField = instanceManager.getClass().getDeclaredField("mBundleLoader");
-            bundleLoaderField.setAccessible(true);
-            bundleLoaderField.set(instanceManager, latestJSBundleLoader);
         } catch (Exception e) {
-            CodePushUtils.log("Unable to set JSBundle - CodePush may not support this version of React Native");
-            throw new IllegalAccessException("Could not setJSBundle");
+            CodePushUtils.log(e);
         }
     }
 
-    private void loadBundle() {
-        clearLifecycleEventListener();
-        try {
-            mCodePush.clearDebugCacheIfNeeded(resolveInstanceManager());
-        } catch(Exception e) {
-            // If we got error in out reflection we should clear debug cache anyway.
-            mCodePush.clearDebugCacheIfNeeded(null);
-        }
-
-        try {
-            // #1) Get the ReactInstanceManager instance, which is what includes the
-            //     logic to reload the current React context.
-            final ReactInstanceManager instanceManager = resolveInstanceManager();
-            if (instanceManager == null) {
-                return;
-            }
-
-            String latestJSBundleFile = mCodePush.getJSBundleFileInternal(mCodePush.getAssetsBundleFileName());
-
-            // #2) Update the locally stored JS bundle file path
-            setJSBundle(instanceManager, latestJSBundleFile);
-
-            // #3) Get the context creation method and fire it on the UI thread (which RN enforces)
-            new Handler(Looper.getMainLooper()).post(new Runnable() {
-                @Override
-                public void run() {
-                    try {
-                        // We don't need to resetReactRootViews anymore 
-                        // due the issue https://github.com/facebook/react-native/issues/14533
-                        // has been fixed in RN 0.46.0
-                        //resetReactRootViews(instanceManager);
-
-                        instanceManager.recreateReactContextInBackground();
-                        mCodePush.initializeUpdateAfterRestart();
-                    } catch (Exception e) {
-                        // The recreation method threw an unknown exception
-                        // so just simply fallback to restarting the Activity (if it exists)
-                        loadBundleLegacy();
-                    }
-                }
-            });
-
-        } catch (Exception e) {
-            // Our reflection logic failed somewhere
-            // so fall back to restarting the Activity (if it exists)
-            CodePushUtils.log("Failed to load the bundle, falling back to restarting the Activity (if it exists). " + e.getMessage());
-            loadBundleLegacy();
-        }
-    }
-
-    // This workaround has been implemented in order to fix https://github.com/facebook/react-native/issues/14533
-    // resetReactRootViews allows to call recreateReactContextInBackground without any exceptions
-    // This fix also relates to https://github.com/microsoft/react-native-code-push/issues/878
-    private void resetReactRootViews(ReactInstanceManager instanceManager) throws NoSuchFieldException, IllegalAccessException {
-        Field mAttachedRootViewsField = instanceManager.getClass().getDeclaredField("mAttachedRootViews");
-        mAttachedRootViewsField.setAccessible(true);
-        List<ReactRootView> mAttachedRootViews = (List<ReactRootView>)mAttachedRootViewsField.get(instanceManager);
-        for (ReactRootView reactRootView : mAttachedRootViews) {
-            reactRootView.removeAllViews();
-            reactRootView.setId(View.NO_ID);
-        }
-        mAttachedRootViewsField.set(instanceManager, mAttachedRootViews);
-    }
 
     private void clearLifecycleEventListener() {
         // Remove LifecycleEventListener to prevent infinite restart loop
@@ -201,23 +110,6 @@ public class CodePushNativeModule extends ReactContextBaseJavaModule {
         }
     }
 
-    // Use reflection to find the ReactInstanceManager. See #556 for a proposal for a less brittle way to approach this.
-    private ReactInstanceManager resolveInstanceManager() throws NoSuchFieldException, IllegalAccessException {
-        ReactInstanceManager instanceManager = CodePush.getReactInstanceManager();
-        if (instanceManager != null) {
-            return instanceManager;
-        }
-
-        final Activity currentActivity = getCurrentActivity();
-        if (currentActivity == null) {
-            return null;
-        }
-
-        ReactApplication reactApplication = (ReactApplication) currentActivity.getApplication();
-        instanceManager = reactApplication.getReactNativeHost().getReactInstanceManager();
-
-        return instanceManager;
-    }
 
     private void restartAppInternal(boolean onlyIfUpdateIsPending) {
         if (this._restartInProgress) {
@@ -232,8 +124,8 @@ public class CodePushNativeModule extends ReactContextBaseJavaModule {
 
         this._restartInProgress = true;
         if (!onlyIfUpdateIsPending || mSettingsManager.isPendingUpdate(null)) {
-            loadBundle();
-            CodePushUtils.log("Restarting app");
+            CodePushUtils.log("Restarting app (hard restart)");
+            performHardRestart();
             return;
         }
 
