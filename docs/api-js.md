@@ -195,10 +195,15 @@ See [disallowRestart](#codepushdisallowrestart) for an example of how this metho
 #### codePush.checkForUpdate
 
 ```javascript
-codePush.checkForUpdate(deploymentKey: String = null, handleBinaryVersionMismatchCallback: (update: RemotePackage) => void): Promise<RemotePackage>;
+codePush.checkForUpdate(
+  deploymentKey: String = null,
+  serverUrl: String = null,
+  handleBinaryVersionMismatchCallback: (update: RemotePackage) => void,
+  options: CheckForUpdateOptions = {}
+): Promise<RemotePackage>;
 ```
 
-Queries the CodePush service to see whether the configured app deployment has an update available. By default, it will use the deployment key that is configured in your `Info.plist` file (iOS), or `MainActivity.java` file (Android), but you can override that by specifying a value via the optional `deploymentKey` parameter. This can be useful when you want to dynamically "redirect" a user to a specific deployment, such as allowing "early access" via an easter egg or a user setting switch.
+Queries the CodePush service to see whether the configured app deployment has an update available. By default, it will use the deployment key that is configured in your `Info.plist` file (iOS), or `MainActivity.java` file (Android), but you can override that by specifying a value via the optional `deploymentKey` parameter. This can be useful when you want to dynamically "redirect" a user to a specific deployment, such as allowing "early access" via an easter egg or a user setting switch. You can also override the configured server via the optional `serverUrl` parameter.
 
 Second optional parameter `handleBinaryVersionMismatchCallback` is an optional callback function that can be used to notify user if there are any binary update.
 E.g. consider a use-case where currently installed binary version is 1.0.1 with label(codepush label) v1. Later native code was changed in the dev cycle and binary version was updated to 1.0.2. When code-push update check is triggered we ignore updates having binary version mismatch (because the update is not targeting to the binary version of currently installed app). In this case installed app (1.0.1) will ignore the update targeting version 1.0.2. You can use `handleBinaryVersionMismatchCallback` to provide a hook to handle such situations.
@@ -218,6 +223,10 @@ This method returns a `Promise` which resolves to one of two possible values:
     5. The latest release within the configured deployment is in an "active rollout" state, and the requesting device doesn't fall within the percentage of users who are eligible for it.
 
 2. A [`RemotePackage`](#remotepackage) instance which represents an available update that can be inspected and/or subsequently downloaded.
+
+##### CheckForUpdateOptions
+
+* __beta__ *(Boolean)* - When `true`, the update check request is sent with `beta=true`, which allows the server to return the release regardless of the device's rollout group eligibility.
 
 Example Usage:
 
@@ -419,6 +428,7 @@ While the `sync` method tries to make it easy to perform silent and active updat
 * __minimumBackgroundDuration__ *(Number)* - Refer to [`CodePushOptions`](#codepushoptions).
 
 * __updateDialog__ *(UpdateDialogOptions)* - Refer to [`CodePushOptions`](#codepushoptions).
+* __beta__ *(Boolean)* - When `true`, `sync` includes `beta=true` in the update check request so that the server treats the device as part of an opt-in beta rollout.
 
 Example Usage:
 

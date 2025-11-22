@@ -116,6 +116,12 @@ export interface SyncOptions {
     serverUrl?: string;
 
     /**
+     * When true, CodePush will request the update check endpoint with a `beta=true` query parameter so that the server
+     * treats the device as part of an opt-in beta rollout.
+     */
+    beta?: boolean;
+
+    /**
      * Specifies when you would like to install optional updates (i.e. those that aren't marked as mandatory).
      * Defaults to codePush.InstallMode.ON_NEXT_RESTART.
      */
@@ -212,6 +218,14 @@ export interface RollbackRetryOptions {
     maxRetryAttempts?: number;
 }
 
+export interface CheckForUpdateOptions {
+    /**
+     * When true, CodePush will request the update check endpoint with a `beta=true` query parameter so that the server
+     * treats the device as part of an opt-in beta rollout.
+     */
+    beta?: boolean;
+}
+
 export interface StatusReport {
     /**
      * Whether the deployment succeeded or failed.
@@ -267,7 +281,7 @@ declare namespace CodePush {
      * @param serverUrl The server URL to use to query the CodePush server for an update.
      * @param handleBinaryVersionMismatchCallback An optional callback for handling target binary version mismatch
      */
-    function checkForUpdate(deploymentKey?: string, serverUrl?: string, handleBinaryVersionMismatchCallback?: HandleBinaryVersionMismatchCallback): Promise<RemotePackage | null>;
+    function checkForUpdate(deploymentKey?: string, serverUrl?: string, handleBinaryVersionMismatchCallback?: HandleBinaryVersionMismatchCallback, options?: CheckForUpdateOptions): Promise<RemotePackage | null>;
 
     /**
      * Retrieves the metadata for an installed update (e.g. description, mandatory).

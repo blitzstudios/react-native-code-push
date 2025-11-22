@@ -8,7 +8,42 @@ import hoistStatics from 'hoist-non-react-statics';
 let NativeCodePush = require("react-native").NativeModules.CodePush;
 const PackageMixins = require("./package-mixins")(NativeCodePush);
 
-async function checkForUpdate(deploymentKey = null, serverUrl = null, handleBinaryVersionMismatchCallback = null) {
+const UPDATE_CHECK_PATH_REGEX = /\/update_check(?:\?|$)/;
+const HTTP_VERB_GET = 0;
+
+function withUpdateCheckQueryParameters(httpRequester, queryParameters) {
+  if (!queryParameters) {
+    return httpRequester;
+  }
+
+  const serializedParams = Object.keys(queryParameters)
+    .reduce((accumulator, key) => {
+      const value = queryParameters[key];
+      if (value !== undefined && value !== null) {
+        accumulator.push(`${encodeURIComponent(key)}=${encodeURIComponent(value)}`);
+      }
+      return accumulator;
+    }, [])
+    .join("&");
+
+  if (!serializedParams) {
+    return httpRequester;
+  }
+
+  return {
+    request(verb, url, requestBody, callback) {
+      const shouldAppendParams = verb === HTTP_VERB_GET && typeof url === "string" && UPDATE_CHECK_PATH_REGEX.test(url);
+      if (!shouldAppendParams) {
+        return httpRequester.request(verb, url, requestBody, callback);
+      }
+
+      const separator = url.includes("?") ? "&" : "?";
+      return httpRequester.request(verb, `${url}${separator}${serializedParams}`, requestBody, callback);
+    }
+  };
+}
+
+async function checkForUpdate(deploymentKey = null, serverUrl = null, handleBinaryVersionMismatchCallback = null, options = {}) {
   /*
    * Before we ask the server if an update exists, we
    * need to retrieve three pieces of information from the
@@ -32,7 +67,11 @@ async function checkForUpdate(deploymentKey = null, serverUrl = null, handleBina
     serverUrl: serverUrl || nativeConfig.serverUrl,
   };
 
-  const sdk = getPromisifiedSdk(requestFetchAdapter, config);
+  const updateCheckQueryParameters = options && options.beta ? { beta: true } : null;
+  const httpRequester = updateCheckQueryParameters
+    ? withUpdateCheckQueryParameters(requestFetchAdapter, updateCheckQueryParameters)
+    : requestFetchAdapter;
+  const sdk = getPromisifiedSdk(httpRequester, config);
 
   // Use dynamically overridden getCurrentPackage() during tests.
   const localPackage = await module.exports.getCurrentPackage();
@@ -380,6 +419,7 @@ async function syncInternal(options = {}, syncStatusChangeCallback, downloadProg
   const syncOptions = {
     deploymentKey: null,
     serverUrl: null,
+    beta: false,
     ignoreFailedUpdates: true,
     rollbackRetryOptions: null,
     installMode: CodePush.InstallMode.ON_NEXT_RESTART,
@@ -432,7 +472,12 @@ async function syncInternal(options = {}, syncStatusChangeCallback, downloadProg
     await CodePush.notifyApplicationReady(syncOptions.deploymentKey, syncOptions.serverUrl);
 
     syncStatusChangeCallback(CodePush.SyncStatus.CHECKING_FOR_UPDATE);
-    const remotePackage = await checkForUpdate(syncOptions.deploymentKey, syncOptions.serverUrl, handleBinaryVersionMismatchCallback);
+    const remotePackage = await checkForUpdate(
+      syncOptions.deploymentKey,
+      syncOptions.serverUrl,
+      handleBinaryVersionMismatchCallback,
+      { beta: syncOptions.beta }
+    );
 
     const doDownloadAndInstall = async () => {
       syncStatusChangeCallback(CodePush.SyncStatus.DOWNLOADING_PACKAGE);
