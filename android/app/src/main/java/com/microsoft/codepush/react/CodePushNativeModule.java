@@ -13,9 +13,7 @@ import com.facebook.react.bridge.ReactContextBaseJavaModule;
 import com.facebook.react.bridge.ReactMethod;
 import com.facebook.react.bridge.ReadableMap;
 import com.facebook.react.bridge.WritableMap;
-import android.view.Choreographer;
 import com.facebook.react.modules.core.DeviceEventManagerModule;
-import com.facebook.react.modules.core.ReactChoreographer;
 
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -188,8 +186,8 @@ public class CodePushNativeModule extends ReactContextBaseJavaModule {
                     JSONObject mutableUpdatePackage = CodePushUtils.convertReadableToJsonObject(updatePackage);
                     CodePushUtils.setJSONValueForKey(mutableUpdatePackage, CodePushConstants.BINARY_MODIFIED_TIME_KEY, "" + mCodePush.getBinaryResourcesModifiedTime());
                     mUpdateManager.downloadPackage(mutableUpdatePackage, mCodePush.getAssetsBundleFileName(), new DownloadProgressCallback() {
-                        private boolean hasScheduledNextFrame = false;
                         private DownloadProgress latestDownloadProgress = null;
+                        private int lastDispatchedProgressPercent = -1;
 
                         @Override
                         public void call(DownloadProgress downloadProgress) {
@@ -198,32 +196,13 @@ public class CodePushNativeModule extends ReactContextBaseJavaModule {
                             }
 
                             latestDownloadProgress = downloadProgress;
-                            // If the download is completed, synchronously send the last event.
-                            if (latestDownloadProgress.isCompleted()) {
+
+                            boolean completed = latestDownloadProgress.isCompleted();
+                            int percent = latestDownloadProgress.getProgressPercent();
+                            if (completed || percent != lastDispatchedProgressPercent) {
+                                lastDispatchedProgressPercent = percent;
                                 dispatchDownloadProgressEvent();
-                                return;
                             }
-
-                            if (hasScheduledNextFrame) {
-                                return;
-                            }
-
-                            hasScheduledNextFrame = true;
-                            getReactApplicationContext().runOnUiQueueThread(new Runnable() {
-                                @Override
-                                public void run() {
-                                    ReactChoreographer.getInstance().postFrameCallback(ReactChoreographer.CallbackType.TIMERS_EVENTS, new Choreographer.FrameCallback() {
-                                        @Override
-                                        public void doFrame(long frameTimeNanos) {
-                                            if (!latestDownloadProgress.isCompleted()) {
-                                                dispatchDownloadProgressEvent();
-                                            }
-
-                                            hasScheduledNextFrame = false;
-                                        }
-                                    });
-                                }
-                            });
                         }
 
                         public void dispatchDownloadProgressEvent() {

@@ -32,6 +32,7 @@
     long long _latestExpectedContentLength;
     long long _latestReceivedConentLength;
     BOOL _didUpdateProgress;
+    NSInteger _lastDispatchedProgressPercent;
     
     BOOL _allowed;
     BOOL _restartInProgress;
@@ -722,6 +723,7 @@ RCT_EXPORT_METHOD(downloadUpdate:(NSDictionary*)updatePackage
         // Set up and unpause the frame observer so that it can emit
         // progress events every frame if the progress is updated.
         _didUpdateProgress = NO;
+        _lastDispatchedProgressPercent = -1;
         self.paused = NO;
     }
 
@@ -737,14 +739,22 @@ RCT_EXPORT_METHOD(downloadUpdate:(NSDictionary*)updatePackage
             // Update the download progress so that the frame observer can notify the JS side
             _latestExpectedContentLength = expectedContentLength;
             _latestReceivedConentLength = receivedContentLength;
-            _didUpdateProgress = YES;
 
-            // If the download is completed, stop observing frame
-            // updates and synchronously send the last event.
-            if (expectedContentLength == receivedContentLength) {
-                _didUpdateProgress = NO;
-                self.paused = YES;
+            _didUpdateProgress = NO;
+
+            BOOL completed = (expectedContentLength == receivedContentLength);
+            NSInteger percent = (expectedContentLength > 0)
+                ? (NSInteger)((receivedContentLength * 100) / expectedContentLength)
+                : 0;
+
+            if (completed || percent != _lastDispatchedProgressPercent) {
+                _lastDispatchedProgressPercent = percent;
                 [self dispatchDownloadProgressEvent];
+            }
+
+            // If the download is completed, stop observing frame updates.
+            if (completed) {
+                self.paused = YES;
             }
         }
         // The download completed

@@ -27,4 +27,11 @@ class DownloadProgress {
     public boolean isCompleted() {
         return mTotalBytes == mReceivedBytes;
     }
+
+    public int getProgressPercent() {
+        if (mTotalBytes <= 0) {
+            return 0;
+        }
+        return (int) ((mReceivedBytes * 100) / mTotalBytes);
+    }
 }
