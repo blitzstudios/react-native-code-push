@@ -85,33 +85,42 @@ gradle.projectsEvaluated {
         def nodeExecutableAndArgs = config.nodeExecutableAndArgs ? config.nodeExecutableAndArgs.get(): ["node"]
         def extraPackagerArgs = config.extraPackagerArgs ? config.extraPackagerArgs.get() : []
 
-        // Make this task run right after the bundle task
-        def generateBundledResourcesHash;
-
         def reactBundleTask = tasks.findByName("createBundle${targetName}JsAndAssets")
         if (reactBundleTask) {
             jsBundleDir = reactBundleTask.property('jsBundleDir').asFile.get()
             resourcesDir = reactBundleTask.property('resourcesDir').asFile.get()
-
-            // mitigates Resource and asset merger: Duplicate resources error
-            project.delete(files("${jsBundleDir}"))
-            
-            jsBundleDir.mkdirs()
-            resourcesDir.mkdirs()
-
             jsBundleFile = file("$jsBundleDir/$bundleAssetName")
 
-            generateBundledResourcesHash = tasks.create(
-                    name: "generateBundledResourcesHash${targetName}",
-                    type: Exec) {
-                commandLine (*nodeExecutableAndArgs, "${nodeModulesPath}/scripts/generateBundledResourcesHash.js", resourcesDir, jsBundleFile, jsBundleDir)
+            // `jsBundleDir` is an @OutputDirectory of createBundle<Variant>JsAndAssets, and the
+            // React Native plugin hands it to AGP as a generated asset source directory. A separate
+            // task writing CodePushHash into it is invisible both to Gradle's output snapshotting
+            // and to AGP's incremental asset-merge blob, so the two can disagree about whether the
+            // file is already known. When they do, the merger registers the same file twice and the
+            // build dies with "Resource and asset merger: Duplicate resources".
+            //
+            // Generating the hash as a final action of the bundle task keeps the directory owned by
+            // exactly one task, so CodePushHash is snapshotted together with the bundle and stays
+            // consistent across incremental builds.
+            def hashCommand = [
+                    *nodeExecutableAndArgs,
+                    "${nodeModulesPath}/scripts/generateBundledResourcesHash.js".toString(),
+                    resourcesDir.absolutePath,
+                    jsBundleFile.absolutePath,
+                    jsBundleDir.absolutePath,
+            ]
 
-                enabled !debuggableVariants.contains(variant.name) ?: targetName.toLowerCase().contains("release")
+            reactBundleTask.doLast { task ->
+                def process = new ProcessBuilder(hashCommand).redirectErrorStream(true).start()
+                process.inputStream.eachLine { line -> task.logger.lifecycle("CodePush: $line") }
+                def exitCode = process.waitFor()
+                if (exitCode != 0) {
+                    throw new GradleException("CodePush: unable to generate $jsBundleDir/CodePushHash, node exited with $exitCode")
+                }
             }
-
-            runBefore("merge${targetName}Resources", generateBundledResourcesHash)
-            runBefore("merge${targetName}Assets", generateBundledResourcesHash)
         } else {
+            // Make this task run right after the bundle task
+            def generateBundledResourcesHash;
+
             def jsBundleDirConfigName = "jsBundleDir${targetName}"
             jsBundleDir = elvisFile(config."$jsBundleDirConfigName") ? elvisFile(config."$jsBundleDirConfigName").get():
                     file("$buildDir/intermediates/assets/${targetPath}")
@@ -150,13 +159,14 @@ gradle.projectsEvaluated {
 
             // We need to generate and record the resources map, but we use it to generate the bundle hash
             generateBundledResourcesHash.dependsOn("recordFilesBeforeBundleCommand${targetName}")
+            generateBundledResourcesHash.dependsOn("bundle${targetName}JsAndAssets")
+
+            runBefore("merge${targetName}Resources", generateBundledResourcesHash)
+            runBefore("merge${targetName}Assets", generateBundledResourcesHash)
+            runBefore("processArmeabi-v7a${targetName}Resources", generateBundledResourcesHash)
+            runBefore("processX86${targetName}Resources", generateBundledResourcesHash)
+            runBefore("processUniversal${targetName}Resources", generateBundledResourcesHash)
+            runBefore("process${targetName}Resources", generateBundledResourcesHash)
         }
-
-        generateBundledResourcesHash.dependsOn("createBundle${targetName}JsAndAssets")
-
-        runBefore("processArmeabi-v7a${targetName}Resources", generateBundledResourcesHash)
-        runBefore("processX86${targetName}Resources", generateBundledResourcesHash)
-        runBefore("processUniversal${targetName}Resources", generateBundledResourcesHash)
-        runBefore("process${targetName}Resources", generateBundledResourcesHash)
     }
 }
