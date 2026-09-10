@@ -11,6 +11,57 @@ const PackageMixins = require("./package-mixins")(NativeCodePush);
 const UPDATE_CHECK_PATH_REGEX = /\/update_check(?:\?|$)/;
 const HTTP_VERB_GET = 0;
 
+/*
+ * Rollout membership is otherwise decided server-side by hashing the device id, which makes
+ * every answer during a ramp specific to one device and so impossible for a shared cache to
+ * hold. Sending the bucket lets the server decide from the request alone, so a CDN can serve
+ * the whole fleet from a single origin fetch while a rollout is still ramping.
+ *
+ * Coarse deliberately: the bucket becomes part of the cache key, so 5% steps multiply the
+ * number of cached entries by 20 rather than 100. Going coarser would distort the ramp, since
+ * membership is `bucket < rollout` and so rounds up at each step.
+ */
+const ROLLOUT_BUCKET_GRANULARITY = 5;
+
+/**
+ * A 32-bit hash whose low bits depend on every bit of the input. The multiply-and-add loop on
+ * its own leaves them dominated by the last few characters, which matters twice over here:
+ * client ids are uuids that vary mostly near the front, and reducing the result modulo the
+ * bucket count reads nothing but the low bits. Without the final mixing step uuid-shaped ids
+ * spread across buckets only half as evenly, and moving to the next label shifted every device
+ * by the same amount, rotating the fleet in lockstep rather than reshuffling it.
+ */
+function getBucketHash(input) {
+  let hash = 0;
+  for (let i = 0; i < input.length; i++) {
+    hash = (hash << 5) - hash + input.charCodeAt(i);
+  }
+
+  hash ^= hash >>> 16;
+  hash = Math.imul(hash, 0x85ebca6b);
+  hash ^= hash >>> 13;
+  hash = Math.imul(hash, 0xc2b2ae35);
+  hash ^= hash >>> 16;
+  return hash >>> 0;
+}
+
+/**
+ * Stable while a device stays on one release and reshuffled once it moves to the next, so the
+ * same users aren't permanently first in every rollout. Salted with the label the device is
+ * currently running rather than the one on offer, because that is what it knows at request
+ * time. A server that doesn't understand the parameter ignores it and falls back to hashing
+ * the device id itself, so sending it is always safe.
+ */
+function getRolloutBucket(clientUniqueId, currentLabel) {
+  if (!clientUniqueId) {
+    return null;
+  }
+
+  const bucketCount = 100 / ROLLOUT_BUCKET_GRANULARITY;
+  const bucket = getBucketHash(`${clientUniqueId}-${currentLabel || ""}`) % bucketCount;
+  return bucket * ROLLOUT_BUCKET_GRANULARITY;
+}
+
 function withUpdateCheckQueryParameters(httpRequester, queryParameters) {
   if (!queryParameters) {
     return httpRequester;
@@ -67,12 +118,6 @@ async function checkForUpdate(deploymentKey = null, serverUrl = null, handleBina
     serverUrl: serverUrl || nativeConfig.serverUrl,
   };
 
-  const updateCheckQueryParameters = options && options.beta ? { beta: true } : null;
-  const httpRequester = updateCheckQueryParameters
-    ? withUpdateCheckQueryParameters(requestFetchAdapter, updateCheckQueryParameters)
-    : requestFetchAdapter;
-  const sdk = getPromisifiedSdk(httpRequester, config);
-
   // Use dynamically overridden getCurrentPackage() during tests.
   const localPackage = await module.exports.getCurrentPackage();
 
@@ -93,6 +138,14 @@ async function checkForUpdate(deploymentKey = null, serverUrl = null, handleBina
       queryPackage.packageHash = config.packageHash;
     }
   }
+
+  // Built after queryPackage because the bucket is salted with the label being reported.
+  const rolloutBucket = getRolloutBucket(config.clientUniqueId, queryPackage.label);
+  const httpRequester = withUpdateCheckQueryParameters(requestFetchAdapter, {
+    ...(options && options.beta ? { beta: true } : null),
+    ...(rolloutBucket === null ? null : { rollout_bucket: rolloutBucket }),
+  });
+  const sdk = getPromisifiedSdk(httpRequester, config);
 
   const update = await sdk.queryUpdateWithCurrentPackage(queryPackage);
 
