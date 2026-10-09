@@ -81,3 +81,5 @@ As an alternative to constructors *you can also use `CodePushBuilder`* to setup 
 - __getPackageFolder()__ - Returns the path to the current update folder.
 
 - __overrideAppVersion(String appVersionOverride)__ - Sets the version of the application's binary interface, which would otherwise default to the Play Store version specified as the `versionName` in the `build.gradle`. This should be called a single time, before the CodePush instance is constructed.
+
+- __overrideIsHeadlessStart(Boolean isHeadlessStart)__ - When the app process starts headless (for example from a push-triggered headless JS task) with an update pending, CodePush keeps running the last confirmed bundle and leaves the update pending for the next start that shows UI, because a headless start never calls `notifyApplicationReady` and would otherwise roll the update back. Headless starts are detected from the process importance when the CodePush instance is constructed. Call this before the CodePush instance is constructed to force the decision for this process, or pass `null` to restore automatic detection.

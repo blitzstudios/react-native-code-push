@@ -517,7 +517,13 @@ public class CodePushNativeModule extends ReactContextBaseJavaModule {
     @ReactMethod
     public void notifyApplicationReady(Promise promise) {
         try {
-            mSettingsManager.removePendingUpdate();
+            if (mCodePush.isPendingUpdateDeferred()) {
+                // This process is running the last confirmed bundle, not the pending update,
+                // so this doesn't confirm the pending update.
+                CodePushUtils.log("Pending update was deferred for this process, leaving it pending.");
+            } else {
+                mSettingsManager.removePendingUpdate();
+            }
             promise.resolve("");
         } catch(CodePushUnknownException e) {
             CodePushUtils.log(e);

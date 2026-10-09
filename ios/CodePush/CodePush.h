@@ -150,6 +150,7 @@ failCallback:(void (^)(NSError *err))failCallback;
 + (NSDictionary *)getPreviousPackage:(NSError **)error;
 + (NSString *)getCurrentPackageFolderPath:(NSError **)error;
 + (NSString *)getCurrentPackageBundlePath:(NSError **)error;
++ (NSString *)getPreviousPackageBundlePath:(NSError **)error;
 + (NSString *)getCurrentPackageHash:(NSError **)error;
 
 + (NSDictionary *)getPackage:(NSString *)packageHash

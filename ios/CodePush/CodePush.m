@@ -72,6 +72,13 @@ static BOOL isRunningBinaryVersion = NO;
 static BOOL needToReportRollback = NO;
 static BOOL testConfigurationFlag = NO;
 
+// YES when this process launched in the background (e.g. a silent push or background fetch) with
+// an update pending, so it is running the last confirmed bundle and the pending update stays
+// pending for the next launch that shows UI. Decided on the first bundle URL request, and cleared
+// when CodePush itself reloads the bundle.
+static BOOL isPendingUpdateDeferred = NO;
+static BOOL didCheckLaunchState = NO;
+
 // These values are used to save the NS bundle, name, extension and subdirectory
 // for the JS bundle in the binary.
 static NSBundle *bundleResourceBundle = nil;
@@ -160,6 +167,14 @@ static NSString *const LatestRollbackCountKey = @"count";
 
     [self ensureBinaryBundleExists];
 
+    if (!didCheckLaunchState) {
+        didCheckLaunchState = YES;
+        isPendingUpdateDeferred = [self isPendingUpdate:nil] && [self isApplicationInBackground];
+        if (isPendingUpdateDeferred) {
+            CPLog(@"Launched in the background, deferring the pending update until the app launches with UI.");
+        }
+    }
+
     NSString *logMessageFormat = @"Loading JS bundle from %@";
 
     NSError *error;
@@ -184,6 +199,10 @@ static NSString *const LatestRollbackCountKey = @"count";
     NSString *packageAppVersion = [currentPackageMetadata objectForKey:AppVersionKey];
 
     if ([[CodePushUpdateUtils modifiedDateStringOfFileAtURL:binaryBundleURL] isEqualToString:packageDate] && ([CodePush isUsingTestConfiguration] ||[binaryAppVersion isEqualToString:packageAppVersion])) {
+        if (isPendingUpdateDeferred) {
+            return [self confirmedBundleURLWithBinaryBundleURL:binaryBundleURL];
+        }
+
         // Return package file because it is newer than the app store binary's JS bundle
         NSURL *packageUrl = [[NSURL alloc] initFileURLWithPath:packageFile];
         CPLog(logMessageFormat, packageUrl);
@@ -203,6 +222,46 @@ static NSString *const LatestRollbackCountKey = @"count";
         isRunningBinaryVersion = YES;
         return binaryBundleURL;
     }
+}
+
+/*
+ * The current package is the pending (unconfirmed) update, so the last
+ * confirmed bundle is the previous package, or the binary's bundle if there is none.
+ */
++ (NSURL *)confirmedBundleURLWithBinaryBundleURL:(NSURL *)binaryBundleURL
+{
+    NSError *error;
+    NSString *previousPackageFile = [CodePushPackage getPreviousPackageBundlePath:&error];
+    NSDictionary *previousPackageMetadata = error ? nil : [CodePushPackage getPreviousPackage:&error];
+    NSString *binaryAppVersion = [[CodePushConfig current] appVersion];
+
+    if (!error && previousPackageFile && previousPackageMetadata &&
+        [[NSFileManager defaultManager] fileExistsAtPath:previousPackageFile] &&
+        [[CodePushUpdateUtils modifiedDateStringOfFileAtURL:binaryBundleURL] isEqualToString:[previousPackageMetadata objectForKey:BinaryBundleDateKey]] &&
+        ([CodePush isUsingTestConfiguration] || [binaryAppVersion isEqualToString:[previousPackageMetadata objectForKey:AppVersionKey]])) {
+        NSURL *packageUrl = [[NSURL alloc] initFileURLWithPath:previousPackageFile];
+        CPLog(@"Loading JS bundle from %@", packageUrl);
+        isRunningBinaryVersion = NO;
+        return packageUrl;
+    }
+
+    CPLog(@"Loading JS bundle from %@", binaryBundleURL);
+    isRunningBinaryVersion = YES;
+    return binaryBundleURL;
+}
+
+/*
+ * A background launch never mounts UI, so it never calls notifyApplicationReady.
+ * applicationState must be read on the main thread; off it, assume a UI launch.
+ */
++ (BOOL)isApplicationInBackground
+{
+    if (![NSThread isMainThread]) {
+        return NO;
+    }
+
+    UIApplication *application = RCTSharedApplication();
+    return application != nil && application.applicationState == UIApplicationStateBackground;
 }
 
 + (NSString *)getApplicationSupportDirectory
@@ -229,6 +288,7 @@ static NSString *const LatestRollbackCountKey = @"count";
     [CodePushPackage clearUpdates];
     [self removePendingUpdate];
     [self removeFailedUpdates];
+    isPendingUpdateDeferred = NO;
 }
 
 #pragma mark - Test-only methods
@@ -401,8 +461,14 @@ static NSString *const LatestRollbackCountKey = @"count";
     NSUserDefaults *preferences = [NSUserDefaults standardUserDefaults];
     NSDictionary *pendingUpdate = [preferences objectForKey:PendingUpdateKey];
     if (pendingUpdate) {
-        _isFirstRunAfterUpdate = YES;
         BOOL updateIsLoading = [pendingUpdate[PendingUpdateIsLoadingKey] boolValue];
+        if (isPendingUpdateDeferred && !updateIsLoading) {
+            // Nothing will confirm the update in a background launch, so marking it as loading
+            // would roll it back on the next launch if this process dies first.
+            return;
+        }
+
+        _isFirstRunAfterUpdate = YES;
         if (updateIsLoading) {
             // Pending update was initialized, but notifyApplicationReady was not called.
             // Therefore, deduce that it is a broken update and rollback.
@@ -534,6 +600,9 @@ static NSString *const LatestRollbackCountKey = @"count";
     // This needs to be async dispatched because the bridge is not set on init
     // when the app first starts, therefore rollbacks will not take effect.
     dispatch_async(dispatch_get_main_queue(), ^{
+        // CodePush is reloading on purpose (restart or rollback), so load the latest bundle.
+        isPendingUpdateDeferred = NO;
+
         // If the current bundle URL is using http(s), then assume the dev
         // is debugging and therefore, shouldn't be redirected to a local
         // file (since Chrome wouldn't support it). Otherwise, update
@@ -995,7 +1064,13 @@ RCT_EXPORT_METHOD(isFirstRun:(NSString *)packageHash
 RCT_EXPORT_METHOD(notifyApplicationReady:(RCTPromiseResolveBlock)resolve
                                 rejecter:(RCTPromiseRejectBlock)reject)
 {
-    [CodePush removePendingUpdate];
+    if (isPendingUpdateDeferred) {
+        // This process is running the last confirmed bundle, not the pending update,
+        // so this doesn't confirm the pending update.
+        CPLog(@"Pending update was deferred for this launch, leaving it pending.");
+    } else {
+        [CodePush removePendingUpdate];
+    }
     resolve(nil);
 }
 

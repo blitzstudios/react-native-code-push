@@ -101,6 +101,26 @@ public class CodePushUpdateManager {
         }
     }
 
+    public String getPreviousPackageBundlePath(String bundleFileName) {
+        String packageHash = getPreviousPackageHash();
+        if (packageHash == null) {
+            return null;
+        }
+
+        JSONObject previousPackage = getPackage(packageHash);
+        if (previousPackage == null) {
+            return null;
+        }
+
+        String packageFolder = getPackageFolderPath(packageHash);
+        String relativeBundlePath = previousPackage.optString(CodePushConstants.RELATIVE_BUNDLE_PATH_KEY, null);
+        if (relativeBundlePath == null) {
+            return CodePushUtils.appendPathComponent(packageFolder, bundleFileName);
+        } else {
+            return CodePushUtils.appendPathComponent(packageFolder, relativeBundlePath);
+        }
+    }
+
     public String getPackageFolderPath(String packageHash) {
         return CodePushUtils.appendPathComponent(getCodePushPath(), packageHash);
     }

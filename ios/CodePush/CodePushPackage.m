@@ -386,6 +386,27 @@ static NSString *const UnzippedFolderName = @"unzipped";
     }
 }
 
++ (NSString *)getPreviousPackageBundlePath:(NSError **)error
+{
+    NSString *packageHash = [self getPreviousPackageHash:error];
+    if (!packageHash) {
+        return nil;
+    }
+
+    NSDictionary *previousPackage = [self getPackage:packageHash error:error];
+    if (!previousPackage) {
+        return nil;
+    }
+
+    NSString *packageFolder = [self getPackageFolderPath:packageHash];
+    NSString *relativeBundlePath = [previousPackage objectForKey:RelativeBundlePathKey];
+    if (relativeBundlePath) {
+        return [packageFolder stringByAppendingPathComponent:relativeBundlePath];
+    } else {
+        return [packageFolder stringByAppendingPathComponent:UpdateBundleFileName];
+    }
+}
+
 + (NSString *)getCurrentPackageHash:(NSError **)error
 {
     NSDictionary *info = [self getCurrentPackageInfo:error];

@@ -1,5 +1,6 @@
 package com.microsoft.codepush.react;
 
+import android.app.ActivityManager;
 import android.content.Context;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
@@ -28,6 +29,12 @@ public class CodePush implements ReactPackage {
     private static boolean sNeedToReportRollback = false;
     private static boolean sTestConfigurationFlag = false;
     private static String sAppVersion = null;
+
+    // True when this process started headless (e.g. a push-triggered headless JS task) with an
+    // update pending, so it is running the last confirmed bundle and the pending update stays
+    // pending for the next start that shows UI.
+    private static boolean sIsPendingUpdateDeferred = false;
+    private static Boolean sIsHeadlessStartOverride = null;
 
     private boolean mDidUpdate = false;
 
@@ -267,6 +274,10 @@ public class CodePush implements ReactPackage {
 
         JSONObject packageMetadata = this.mUpdateManager.getCurrentPackage();
         if (isPackageBundleLatest(packageMetadata)) {
+            if (sIsPendingUpdateDeferred) {
+                return getConfirmedJSBundleFile(binaryJsBundleUrl);
+            }
+
             CodePushUtils.logBundleUrl(packageFilePath);
             sIsRunningBinaryVersion = false;
             return packageFilePath;
@@ -283,14 +294,52 @@ public class CodePush implements ReactPackage {
         }
     }
 
+    // The current package is the pending (unconfirmed) update, so the last confirmed bundle is the
+    // previous package, or the binary's bundle if there is none.
+    private String getConfirmedJSBundleFile(String binaryJsBundleUrl) {
+        String previousPackageFilePath = mUpdateManager.getPreviousPackageBundlePath(this.mAssetsBundleFileName);
+        JSONObject previousPackageMetadata = mUpdateManager.getPreviousPackage();
+        if (previousPackageFilePath != null && previousPackageMetadata != null
+                && FileUtils.fileAtPathExists(previousPackageFilePath)
+                && isPackageBundleLatest(previousPackageMetadata)) {
+            CodePushUtils.logBundleUrl(previousPackageFilePath);
+            sIsRunningBinaryVersion = false;
+            return previousPackageFilePath;
+        }
+
+        CodePushUtils.logBundleUrl(binaryJsBundleUrl);
+        sIsRunningBinaryVersion = true;
+        return binaryJsBundleUrl;
+    }
+
     public String getServerUrl() {
         return mServerUrl;
+    }
+
+    // A headless start (FCM message, HeadlessJsTaskService, WorkManager job, broadcast) never mounts
+    // UI, so it never calls notifyApplicationReady. Starts that show UI are FOREGROUND or VISIBLE, or
+    // TOP_SLEEPING if the screen turned off mid-launch; anything less important is treated as headless.
+    private boolean isHeadlessStart() {
+        if (sIsHeadlessStartOverride != null) {
+            return sIsHeadlessStartOverride;
+        }
+
+        try {
+            ActivityManager.RunningAppProcessInfo processInfo = new ActivityManager.RunningAppProcessInfo();
+            ActivityManager.getMyMemoryState(processInfo);
+            return processInfo.importance > ActivityManager.RunningAppProcessInfo.IMPORTANCE_VISIBLE
+                    && processInfo.importance != ActivityManager.RunningAppProcessInfo.IMPORTANCE_TOP_SLEEPING;
+        } catch (Exception e) {
+            CodePushUtils.log(e);
+            return false;
+        }
     }
 
     void initializeUpdateAfterRestart() {
         // Reset the state which indicates that
         // the app was just freshly updated.
         mDidUpdate = false;
+        sIsPendingUpdateDeferred = false;
 
         JSONObject pendingUpdate = mSettingsManager.getPendingUpdate();
         if (pendingUpdate != null) {
@@ -317,6 +366,12 @@ public class CodePush implements ReactPackage {
                     CodePushUtils.log("Update did not finish loading the last time, rolling back to a previous version.");
                     sNeedToReportRollback = true;
                     rollbackPackage();
+                } else if (isHeadlessStart()) {
+                    // Nothing will confirm the update in a headless start, so marking it as loading
+                    // would roll it back on the next start if this process dies first. Keep running
+                    // the last confirmed bundle and leave the update pending.
+                    CodePushUtils.log("Headless start, deferring the pending update until the app starts with UI.");
+                    sIsPendingUpdateDeferred = true;
                 } else {
                     // There is in fact a new update running for the first
                     // time, so update the local state to ensure the client knows.
@@ -344,6 +399,10 @@ public class CodePush implements ReactPackage {
 
     boolean isRunningBinaryVersion() {
         return sIsRunningBinaryVersion;
+    }
+
+    boolean isPendingUpdateDeferred() {
+        return sIsPendingUpdateDeferred;
     }
 
     private boolean isPackageBundleLatest(JSONObject packageMetadata) {
@@ -376,6 +435,12 @@ public class CodePush implements ReactPackage {
         sAppVersion = appVersionOverride;
     }
 
+    // Overrides the automatic headless start check for this process; null restores it. Must be
+    // called before the CodePush instance is constructed (i.e. before the React host is built).
+    public static void overrideIsHeadlessStart(Boolean isHeadlessStart) {
+        sIsHeadlessStartOverride = isHeadlessStart;
+    }
+
     private void rollbackPackage() {
         JSONObject failedPackage = mUpdateManager.getCurrentPackage();
         mSettingsManager.saveFailedUpdate(failedPackage);
@@ -404,6 +469,7 @@ public class CodePush implements ReactPackage {
         mUpdateManager.clearUpdates();
         mSettingsManager.removePendingUpdate();
         mSettingsManager.removeFailedUpdates();
+        sIsPendingUpdateDeferred = false;
     }
 
     public static void setReactInstanceHolder(ReactInstanceHolder reactInstanceHolder) {
