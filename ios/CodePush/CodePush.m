@@ -53,6 +53,7 @@ static NSString *const DeploymentSucceeded = @"DeploymentSucceeded";
 // These keys represent the names we use to store data in NSUserDefaults
 static NSString *const FailedUpdatesKey = @"CODE_PUSH_FAILED_UPDATES";
 static NSString *const PendingUpdateKey = @"CODE_PUSH_PENDING_UPDATE";
+static NSString *const NeedToReportRollbackKey = @"CODE_PUSH_NEED_TO_REPORT_ROLLBACK";
 
 // These keys are already "namespaced" by the PendingUpdateKey, so
 // their values don't need to be obfuscated to prevent collision with app data
@@ -69,8 +70,13 @@ static NSString *const PackageIsPendingKey = @"isPending";
 #pragma mark - Static variables
 
 static BOOL isRunningBinaryVersion = NO;
-static BOOL needToReportRollback = NO;
 static BOOL testConfigurationFlag = NO;
+
+// Whether this process runs the last confirmed package and leaves the pending update untried. Decided once per
+// process, on the first bundle URL request: the bundle it loads and the trial it skips have to agree, and a reload
+// CodePush did not ask for keeps the bundle that is running. A reload CodePush asks for ends it.
+static BOOL hasDecidedPendingUpdateDeferral = NO;
+static BOOL isDeferringPendingUpdate = NO;
 
 // These values are used to save the NS bundle, name, extension and subdirectory
 // for the JS bundle in the binary.
@@ -180,10 +186,13 @@ static NSString *const LatestRollbackCountKey = @"count";
         return binaryBundleURL;
     }
 
-    NSString *packageDate = [currentPackageMetadata objectForKey:BinaryBundleDateKey];
     NSString *packageAppVersion = [currentPackageMetadata objectForKey:AppVersionKey];
 
-    if ([[CodePushUpdateUtils modifiedDateStringOfFileAtURL:binaryBundleURL] isEqualToString:packageDate] && ([CodePush isUsingTestConfiguration] ||[binaryAppVersion isEqualToString:packageAppVersion])) {
+    if ([self isPackage:currentPackageMetadata forBinaryBundleURL:binaryBundleURL]) {
+        if ([self isDeferringPendingUpdate]) {
+            return [self confirmedBundleURLWithBinaryBundleURL:binaryBundleURL];
+        }
+
         // Return package file because it is newer than the app store binary's JS bundle
         NSURL *packageUrl = [[NSURL alloc] initFileURLWithPath:packageFile];
         CPLog(logMessageFormat, packageUrl);
@@ -203,6 +212,37 @@ static NSString *const LatestRollbackCountKey = @"count";
         isRunningBinaryVersion = YES;
         return binaryBundleURL;
     }
+}
+
++ (BOOL)isPackage:(NSDictionary *)packageMetadata forBinaryBundleURL:(NSURL *)binaryBundleURL
+{
+    NSString *packageDate = [packageMetadata objectForKey:BinaryBundleDateKey];
+    NSString *packageAppVersion = [packageMetadata objectForKey:AppVersionKey];
+    return [[CodePushUpdateUtils modifiedDateStringOfFileAtURL:binaryBundleURL] isEqualToString:packageDate] &&
+           ([CodePush isUsingTestConfiguration] || [[[CodePushConfig current] appVersion] isEqualToString:packageAppVersion]);
+}
+
+/*
+ * The last confirmed bundle while an update is pending: the previous package, or the binary's when there is none or
+ * it no longer matches the binary.
+ */
++ (NSURL *)confirmedBundleURLWithBinaryBundleURL:(NSURL *)binaryBundleURL
+{
+    NSError *error;
+    NSString *previousPackageFile = [CodePushPackage getPreviousPackageBundlePath:&error];
+    NSDictionary *previousPackageMetadata = error ? nil : [CodePushPackage getPreviousPackage:&error];
+    if (!error && previousPackageFile && previousPackageMetadata &&
+        [[NSFileManager defaultManager] fileExistsAtPath:previousPackageFile] &&
+        [self isPackage:previousPackageMetadata forBinaryBundleURL:binaryBundleURL]) {
+        NSURL *packageUrl = [[NSURL alloc] initFileURLWithPath:previousPackageFile];
+        CPLog(@"Loading JS bundle from %@", packageUrl);
+        isRunningBinaryVersion = NO;
+        return packageUrl;
+    }
+
+    CPLog(@"Loading JS bundle from %@", binaryBundleURL);
+    isRunningBinaryVersion = YES;
+    return binaryBundleURL;
 }
 
 + (NSString *)getApplicationSupportDirectory
@@ -229,6 +269,61 @@ static NSString *const LatestRollbackCountKey = @"count";
     [CodePushPackage clearUpdates];
     [self removePendingUpdate];
     [self removeFailedUpdates];
+    [self setNeedToReportRollback:NO];
+    [self stopDeferringPendingUpdate];
+}
+
+/*
+ * A launch in the background, such as a silent push or a background fetch, may never reach notifyApplicationReady.
+ * With an untried update pending, it runs the last confirmed package and leaves the update untried for the next
+ * launch that shows UI. An update already marked as loading is still rolled back.
+ */
++ (BOOL)isDeferringPendingUpdate
+{
+    @synchronized (self) {
+        if (!hasDecidedPendingUpdateDeferral) {
+            hasDecidedPendingUpdateDeferral = YES;
+            isDeferringPendingUpdate = [self isPendingUpdate:nil] && [self isLaunchingInBackground];
+            if (isDeferringPendingUpdate) {
+                CPLog(@"Launched in the background; the pending update waits for a launch that shows UI.");
+            }
+        }
+        return isDeferringPendingUpdate;
+    }
+}
+
++ (void)stopDeferringPendingUpdate
+{
+    @synchronized (self) {
+        hasDecidedPendingUpdateDeferral = YES;
+        isDeferringPendingUpdate = NO;
+    }
+}
+
+// `applicationState` is only readable on the main thread, which is where React Native asks for the bundle URL.
++ (BOOL)isLaunchingInBackground
+{
+    if (![NSThread isMainThread]) {
+        return NO;
+    }
+    UIApplication *application = RCTSharedApplication();
+    return application != nil && application.applicationState == UIApplicationStateBackground;
+}
+
++ (BOOL)needToReportRollback
+{
+    return [[NSUserDefaults standardUserDefaults] boolForKey:NeedToReportRollbackKey];
+}
+
++ (void)setNeedToReportRollback:(BOOL)needToReportRollback
+{
+    NSUserDefaults *preferences = [NSUserDefaults standardUserDefaults];
+    if (needToReportRollback) {
+        [preferences setBool:YES forKey:NeedToReportRollbackKey];
+    } else {
+        [preferences removeObjectForKey:NeedToReportRollbackKey];
+    }
+    [preferences synchronize];
 }
 
 #pragma mark - Test-only methods
@@ -400,14 +495,14 @@ static NSString *const LatestRollbackCountKey = @"count";
     self.paused = YES;
     NSUserDefaults *preferences = [NSUserDefaults standardUserDefaults];
     NSDictionary *pendingUpdate = [preferences objectForKey:PendingUpdateKey];
-    if (pendingUpdate) {
+    if (pendingUpdate && ![CodePush isDeferringPendingUpdate]) {
         _isFirstRunAfterUpdate = YES;
         BOOL updateIsLoading = [pendingUpdate[PendingUpdateIsLoadingKey] boolValue];
         if (updateIsLoading) {
             // Pending update was initialized, but notifyApplicationReady was not called.
             // Therefore, deduce that it is a broken update and rollback.
             CPLog(@"Update did not finish loading the last time, rolling back to a previous version.");
-            needToReportRollback = YES;
+            [CodePush setNeedToReportRollback:YES];
             [self rollbackPackage];
         } else {
             // Mark that we tried to initialize the new update, so that if it crashes,
@@ -534,6 +629,8 @@ static NSString *const LatestRollbackCountKey = @"count";
     // This needs to be async dispatched because the bridge is not set on init
     // when the app first starts, therefore rollbacks will not take effect.
     dispatch_async(dispatch_get_main_queue(), ^{
+        [CodePush stopDeferringPendingUpdate];
+
         // If the current bundle URL is using http(s), then assume the dev
         // is debugging and therefore, shouldn't be redirected to a local
         // file (since Chrome wouldn't support it). Otherwise, update
@@ -995,7 +1092,9 @@ RCT_EXPORT_METHOD(isFirstRun:(NSString *)packageHash
 RCT_EXPORT_METHOD(notifyApplicationReady:(RCTPromiseResolveBlock)resolve
                                 rejecter:(RCTPromiseRejectBlock)reject)
 {
-    [CodePush removePendingUpdate];
+    if (![CodePush isDeferringPendingUpdate]) {
+        [CodePush removePendingUpdate];
+    }
     resolve(nil);
 }
 
@@ -1074,8 +1173,8 @@ RCT_EXPORT_METHOD(downloadAndReplaceCurrentBundle:(NSString *)remoteBundleUrl)
 RCT_EXPORT_METHOD(getNewStatusReport:(RCTPromiseResolveBlock)resolve
                             rejecter:(RCTPromiseRejectBlock)reject)
 {
-    if (needToReportRollback) {
-        needToReportRollback = NO;
+    if ([CodePush needToReportRollback]) {
+        [CodePush setNeedToReportRollback:NO];
         NSUserDefaults *preferences = [NSUserDefaults standardUserDefaults];
         NSMutableArray *failedUpdates = [preferences objectForKey:FailedUpdatesKey];
         if (failedUpdates) {

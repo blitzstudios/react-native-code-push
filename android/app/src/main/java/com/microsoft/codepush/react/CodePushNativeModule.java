@@ -517,7 +517,9 @@ public class CodePushNativeModule extends ReactContextBaseJavaModule {
     @ReactMethod
     public void notifyApplicationReady(Promise promise) {
         try {
-            mSettingsManager.removePendingUpdate();
+            if (!mCodePush.isPendingUpdateDeferred()) {
+                mSettingsManager.removePendingUpdate();
+            }
             promise.resolve("");
         } catch(CodePushUnknownException e) {
             CodePushUtils.log(e);

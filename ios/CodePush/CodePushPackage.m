@@ -366,19 +366,28 @@ static NSString *const UnzippedFolderName = @"unzipped";
 
 + (NSString *)getCurrentPackageBundlePath:(NSError **)error
 {
-    NSString *packageFolder = [self getCurrentPackageFolderPath:error];
-    
-    if (!packageFolder) {
+    return [self getBundlePathForPackage:[self getCurrentPackageHash:error] error:error];
+}
+
++ (NSString *)getPreviousPackageBundlePath:(NSError **)error
+{
+    return [self getBundlePathForPackage:[self getPreviousPackageHash:error] error:error];
+}
+
++ (NSString *)getBundlePathForPackage:(NSString *)packageHash
+                                error:(NSError **)error
+{
+    if (!packageHash) {
         return nil;
     }
-    
-    NSDictionary *currentPackage = [self getCurrentPackage:error];
-    
-    if (!currentPackage) {
+
+    NSDictionary *package = [self getPackage:packageHash error:error];
+    if (!package) {
         return nil;
     }
-    
-    NSString *relativeBundlePath = [currentPackage objectForKey:RelativeBundlePathKey];
+
+    NSString *packageFolder = [self getPackageFolderPath:packageHash];
+    NSString *relativeBundlePath = [package objectForKey:RelativeBundlePathKey];
     if (relativeBundlePath) {
         return [packageFolder stringByAppendingPathComponent:relativeBundlePath];
     } else {

@@ -79,6 +79,18 @@ public class SettingsManager {
         }
     }
 
+    public boolean needToReportRollback() {
+        return mSettings.getBoolean(CodePushConstants.NEED_TO_REPORT_ROLLBACK_KEY, false);
+    }
+
+    public void setNeedToReportRollback(boolean needToReportRollback) {
+        if (needToReportRollback) {
+            mSettings.edit().putBoolean(CodePushConstants.NEED_TO_REPORT_ROLLBACK_KEY, true).commit();
+        } else {
+            mSettings.edit().remove(CodePushConstants.NEED_TO_REPORT_ROLLBACK_KEY).commit();
+        }
+    }
+
     public void removeFailedUpdates() {
         mSettings.edit().remove(CodePushConstants.FAILED_UPDATES_KEY).commit();
     }

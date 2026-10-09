@@ -1,5 +1,6 @@
 package com.microsoft.codepush.react;
 
+import android.app.ActivityManager;
 import android.content.Context;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
@@ -25,11 +26,13 @@ import java.lang.reflect.Method;
 public class CodePush implements ReactPackage {
 
     private static boolean sIsRunningBinaryVersion = false;
-    private static boolean sNeedToReportRollback = false;
     private static boolean sTestConfigurationFlag = false;
     private static String sAppVersion = null;
 
     private boolean mDidUpdate = false;
+
+    // Whether this process runs the last confirmed package and leaves the pending update untried.
+    private boolean mPendingUpdateDeferred = false;
 
     private String mAssetsBundleFileName;
 
@@ -267,6 +270,10 @@ public class CodePush implements ReactPackage {
 
         JSONObject packageMetadata = this.mUpdateManager.getCurrentPackage();
         if (isPackageBundleLatest(packageMetadata)) {
+            if (mPendingUpdateDeferred) {
+                return getConfirmedJSBundleFile(binaryJsBundleUrl);
+            }
+
             CodePushUtils.logBundleUrl(packageFilePath);
             sIsRunningBinaryVersion = false;
             return packageFilePath;
@@ -291,6 +298,7 @@ public class CodePush implements ReactPackage {
         // Reset the state which indicates that
         // the app was just freshly updated.
         mDidUpdate = false;
+        mPendingUpdateDeferred = false;
 
         JSONObject pendingUpdate = mSettingsManager.getPendingUpdate();
         if (pendingUpdate != null) {
@@ -315,8 +323,14 @@ public class CodePush implements ReactPackage {
                     // Pending update was initialized, but notifyApplicationReady was not called.
                     // Therefore, deduce that it is a broken update and rollback.
                     CodePushUtils.log("Update did not finish loading the last time, rolling back to a previous version.");
-                    sNeedToReportRollback = true;
+                    setNeedToReportRollback(true);
                     rollbackPackage();
+                } else if (isHeadlessStart()) {
+                    // A headless start, such as a push running a headless JS task, may never reach
+                    // notifyApplicationReady. It runs the last confirmed package and leaves the update untried for
+                    // the next start that shows UI.
+                    CodePushUtils.log("Headless start; the pending update waits for a start that shows UI.");
+                    mPendingUpdateDeferred = true;
                 } else {
                     // There is in fact a new update running for the first
                     // time, so update the local state to ensure the client knows.
@@ -369,7 +383,44 @@ public class CodePush implements ReactPackage {
     }
 
     boolean needToReportRollback() {
-        return sNeedToReportRollback;
+        return mSettingsManager.needToReportRollback();
+    }
+
+    boolean isPendingUpdateDeferred() {
+        return mPendingUpdateDeferred;
+    }
+
+    // Read while the React host that constructs this package is built. A start that shows UI builds it during an
+    // activity's start, when the process is foreground, visible, or top-sleeping (the screen turned off mid-launch).
+    // An importance the check cannot read counts as a start that shows UI.
+    private boolean isHeadlessStart() {
+        try {
+            ActivityManager.RunningAppProcessInfo processInfo = new ActivityManager.RunningAppProcessInfo();
+            ActivityManager.getMyMemoryState(processInfo);
+            return processInfo.importance > ActivityManager.RunningAppProcessInfo.IMPORTANCE_VISIBLE
+                    && processInfo.importance != ActivityManager.RunningAppProcessInfo.IMPORTANCE_TOP_SLEEPING;
+        } catch (Exception e) {
+            CodePushUtils.log(e);
+            return false;
+        }
+    }
+
+    // The last confirmed bundle while an update is pending: the previous package, or the binary's when there is none or
+    // it no longer matches the binary.
+    private String getConfirmedJSBundleFile(String binaryJsBundleUrl) {
+        String previousPackageFilePath = mUpdateManager.getPreviousPackageBundlePath(this.mAssetsBundleFileName);
+        JSONObject previousPackageMetadata = mUpdateManager.getPreviousPackage();
+        if (previousPackageFilePath != null && previousPackageMetadata != null
+                && FileUtils.fileAtPathExists(previousPackageFilePath)
+                && isPackageBundleLatest(previousPackageMetadata)) {
+            CodePushUtils.logBundleUrl(previousPackageFilePath);
+            sIsRunningBinaryVersion = false;
+            return previousPackageFilePath;
+        }
+
+        CodePushUtils.logBundleUrl(binaryJsBundleUrl);
+        sIsRunningBinaryVersion = true;
+        return binaryJsBundleUrl;
     }
 
     public static void overrideAppVersion(String appVersionOverride) {
@@ -384,7 +435,7 @@ public class CodePush implements ReactPackage {
     }
 
     public void setNeedToReportRollback(boolean needToReportRollback) {
-        CodePush.sNeedToReportRollback = needToReportRollback;
+        mSettingsManager.setNeedToReportRollback(needToReportRollback);
     }
 
     /* The below 3 methods are used for running tests.*/
@@ -404,6 +455,8 @@ public class CodePush implements ReactPackage {
         mUpdateManager.clearUpdates();
         mSettingsManager.removePendingUpdate();
         mSettingsManager.removeFailedUpdates();
+        mSettingsManager.setNeedToReportRollback(false);
+        mPendingUpdateDeferred = false;
     }
 
     public static void setReactInstanceHolder(ReactInstanceHolder reactInstanceHolder) {

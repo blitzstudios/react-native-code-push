@@ -20,6 +20,7 @@ public class CodePushConstants {
     public static final String PENDING_UPDATE_HASH_KEY = "hash";
     public static final String PENDING_UPDATE_IS_LOADING_KEY = "isLoading";
     public static final String PENDING_UPDATE_KEY = "CODE_PUSH_PENDING_UPDATE";
+    public static final String NEED_TO_REPORT_ROLLBACK_KEY = "CODE_PUSH_NEED_TO_REPORT_ROLLBACK";
     public static final String PREVIOUS_PACKAGE_KEY = "previousPackage";
     public static final String REACT_NATIVE_LOG_TAG = "ReactNative";
     public static final String RELATIVE_BUNDLE_PATH_KEY = "bundlePath";

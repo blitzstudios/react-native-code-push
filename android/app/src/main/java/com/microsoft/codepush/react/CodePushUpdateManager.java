@@ -83,17 +83,25 @@ public class CodePushUpdateManager {
     }
 
     public String getCurrentPackageBundlePath(String bundleFileName) {
-        String packageFolder = getCurrentPackageFolderPath();
-        if (packageFolder == null) {
+        return getPackageBundlePath(getCurrentPackageHash(), bundleFileName);
+    }
+
+    public String getPreviousPackageBundlePath(String bundleFileName) {
+        return getPackageBundlePath(getPreviousPackageHash(), bundleFileName);
+    }
+
+    private String getPackageBundlePath(String packageHash, String bundleFileName) {
+        if (packageHash == null) {
             return null;
         }
 
-        JSONObject currentPackage = getCurrentPackage();
-        if (currentPackage == null) {
+        JSONObject packageMetadata = getPackage(packageHash);
+        if (packageMetadata == null) {
             return null;
         }
 
-        String relativeBundlePath = currentPackage.optString(CodePushConstants.RELATIVE_BUNDLE_PATH_KEY, null);
+        String packageFolder = getPackageFolderPath(packageHash);
+        String relativeBundlePath = packageMetadata.optString(CodePushConstants.RELATIVE_BUNDLE_PATH_KEY, null);
         if (relativeBundlePath == null) {
             return CodePushUtils.appendPathComponent(packageFolder, bundleFileName);
         } else {
