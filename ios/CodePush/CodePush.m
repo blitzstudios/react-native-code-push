@@ -338,14 +338,18 @@ static NSString *const LatestRollbackCountKey = @"count";
     }
 }
 
-// `applicationState` is only readable on the main thread, which is where React Native asks for the bundle URL.
+// `applicationState` and `backgroundTimeRemaining` are only readable on the main thread, which is where React Native
+// asks for the bundle URL. Under the scene life cycle `applicationState` reads as background on every launch until a
+// scene enters the foreground, which is after the bundle is chosen. A launch the system starts in the background has a
+// finite allowance of background time from its first moment; a launch into the foreground has none.
 + (BOOL)isLaunchingInBackground
 {
     if (![NSThread isMainThread]) {
         return NO;
     }
     UIApplication *application = RCTSharedApplication();
-    return application != nil && application.applicationState == UIApplicationStateBackground;
+    return application != nil && application.applicationState == UIApplicationStateBackground &&
+           application.backgroundTimeRemaining < DBL_MAX;
 }
 
 + (BOOL)needToReportRollback
