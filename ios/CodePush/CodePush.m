@@ -98,6 +98,12 @@ static BOOL isAwaitingLoad = NO;
 
 // Observes the foreground once a load defers a pending update. Its observer is the token NSNotificationCenter returns.
 static id deferredUpdateForegroundObserver = nil;
+static NSTimeInterval deferralDecidedAtUptime = 0;
+
+// How long after the deferral the app may enter the foreground and still reload into the update. A launch into the
+// foreground gets there within moments of the decision; a background launch the user opens later does not, and by then
+// its runtime may be handling the notification the user tapped, which a reload would drop.
+static const NSTimeInterval DeferredUpdateForegroundWindowSeconds = 10;
 
 // These values are used to save the NS bundle, name, extension and subdirectory
 // for the JS bundle in the binary.
@@ -320,8 +326,9 @@ static NSString *const LatestRollbackCountKey = @"count";
 
 /*
  * A launch in the background, such as a silent push or a background fetch, may never reach notifyApplicationReady.
- * With an untried update pending, it runs the last confirmed package and leaves the update untried until the app
- * enters the foreground. An update already marked as loading is still rolled back.
+ * With an untried update pending, it runs the last confirmed package and leaves the update untried for the next start,
+ * or until the app enters the foreground as part of the same launch. An update already marked as loading is still
+ * rolled back.
  */
 + (BOOL)isDeferringPendingUpdate
 {
@@ -361,9 +368,10 @@ static NSString *const LatestRollbackCountKey = @"count";
 
 /*
  * The deferral decides before the launch can say whether it shows UI, so it can be wrong. A load that deferred a
- * pending update reloads into it once the app enters the foreground: whether this was a foreground launch the decision
- * mistook for a background one, or a background launch the user then opens. The new load chooses the update and starts
- * its trial before any of its code runs, as every load does.
+ * pending update reloads into it if the app enters the foreground as part of the same launch, which means the decision
+ * mistook a foreground launch for a background one. The new load chooses the update and starts its trial before any of
+ * its code runs, as every load does. A background launch the user opens later keeps its bundle, and the update waits
+ * for the next start.
  */
 + (void)applyDeferredUpdateOnForeground
 {
@@ -371,6 +379,7 @@ static NSString *const LatestRollbackCountKey = @"count";
         if (deferredUpdateForegroundObserver) {
             return;
         }
+        deferralDecidedAtUptime = [[NSProcessInfo processInfo] systemUptime];
         deferredUpdateForegroundObserver =
             [[NSNotificationCenter defaultCenter] addObserverForName:UIApplicationWillEnterForegroundNotification
                                                               object:nil
@@ -385,6 +394,12 @@ static NSString *const LatestRollbackCountKey = @"count";
 {
     @synchronized (self) {
         if (!hasDecidedPendingUpdateDeferral || !isDeferringPendingUpdate || isAwaitingLoad || ![self isPendingUpdate:nil]) {
+            return;
+        }
+        NSTimeInterval sinceDeferral = [[NSProcessInfo processInfo] systemUptime] - deferralDecidedAtUptime;
+        if (sinceDeferral > DeferredUpdateForegroundWindowSeconds) {
+            CPLog(@"Entered the foreground %.0fs after a background launch; the pending update waits for the next start.",
+                  sinceDeferral);
             return;
         }
         [self stopDeferringPendingUpdate];
