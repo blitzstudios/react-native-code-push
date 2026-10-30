@@ -23,6 +23,7 @@
 @implementation CodePush {
     BOOL _hasResumeListener;
     BOOL _isFirstRunAfterUpdate;
+    NSUInteger _loadGeneration;
     int _minimumBackgroundDuration;
     NSDate *_lastResignedDate;
     CodePushInstallMode _installMode;
@@ -74,7 +75,8 @@ static BOOL testConfigurationFlag = NO;
 
 // Whether this process runs the last confirmed package and leaves the pending update untried. Decided once per
 // process, on the first bundle URL request: the bundle it loads and the trial it skips have to agree, and a reload
-// CodePush did not ask for keeps the bundle that is running. A reload CodePush asks for ends it.
+// CodePush did not ask for keeps the bundle that is running. A reload CodePush asks for ends it, including the one it
+// asks for when the app enters the foreground.
 static BOOL hasDecidedPendingUpdateDeferral = NO;
 static BOOL isDeferringPendingUpdate = NO;
 
@@ -85,6 +87,17 @@ static BOOL isDeferringPendingUpdate = NO;
 // load.
 static NSURL *loadBundleURL = nil;
 static BOOL isLoadFirstRunAfterUpdate = NO;
+
+// Counts the loads CodePush chooses a bundle for. A module belongs to the load that was current when it was created,
+// and only that load's runtime may confirm, install or restart: React Native asks for the next load's bundle before the
+// replaced runtime has finished tearing down, and a call still queued from it must not touch the new load's trial.
+// `isAwaitingLoad` covers the moment between asking for a new load and choosing its bundle, when the only runtime that
+// can create a module is the one being replaced.
+static NSUInteger loadGeneration = 0;
+static BOOL isAwaitingLoad = NO;
+
+// Observes the foreground once a load defers a pending update. Its observer is the token NSNotificationCenter returns.
+static id deferredUpdateForegroundObserver = nil;
 
 // These values are used to save the NS bundle, name, extension and subdirectory
 // for the JS bundle in the binary.
@@ -177,6 +190,7 @@ static NSString *const LatestRollbackCountKey = @"count";
     @synchronized (self) {
         if (!loadBundleURL) {
             isLoadFirstRunAfterUpdate = NO;
+            isAwaitingLoad = NO;
             loadBundleURL = [self decideLoadBundleURL];
         }
         return loadBundleURL;
@@ -209,6 +223,7 @@ static NSString *const LatestRollbackCountKey = @"count";
 
     if ([self isPackage:currentPackageMetadata forBinaryBundleURL:binaryBundleURL]) {
         if ([self isDeferringPendingUpdate]) {
+            [self applyDeferredUpdateOnForeground];
             return [self confirmedBundleURLWithBinaryBundleURL:binaryBundleURL];
         }
 
@@ -305,8 +320,8 @@ static NSString *const LatestRollbackCountKey = @"count";
 
 /*
  * A launch in the background, such as a silent push or a background fetch, may never reach notifyApplicationReady.
- * With an untried update pending, it runs the last confirmed package and leaves the update untried for the next
- * launch that shows UI. An update already marked as loading is still rolled back.
+ * With an untried update pending, it runs the last confirmed package and leaves the update untried until the app
+ * enters the foreground. An update already marked as loading is still rolled back.
  */
 + (BOOL)isDeferringPendingUpdate
 {
@@ -330,11 +345,62 @@ static NSString *const LatestRollbackCountKey = @"count";
     }
 }
 
-+ (void)startNewLoad
+/*
+ * Asks for a new load. `choosesBundle` is whether CodePush chooses its bundle, which it does unless the bundle comes
+ * from the packager; a load CodePush does not choose never arrives to end the wait.
+ */
++ (void)startNewLoad:(BOOL)choosesBundle
 {
     @synchronized (self) {
         loadBundleURL = nil;
         isLoadFirstRunAfterUpdate = NO;
+        loadGeneration++;
+        isAwaitingLoad = choosesBundle;
+    }
+}
+
+/*
+ * The deferral decides before the launch can say whether it shows UI, so it can be wrong. A load that deferred a
+ * pending update reloads into it once the app enters the foreground: whether this was a foreground launch the decision
+ * mistook for a background one, or a background launch the user then opens. The new load chooses the update and starts
+ * its trial before any of its code runs, as every load does.
+ */
++ (void)applyDeferredUpdateOnForeground
+{
+    @synchronized (self) {
+        if (deferredUpdateForegroundObserver) {
+            return;
+        }
+        deferredUpdateForegroundObserver =
+            [[NSNotificationCenter defaultCenter] addObserverForName:UIApplicationWillEnterForegroundNotification
+                                                              object:nil
+                                                               queue:[NSOperationQueue mainQueue]
+                                                          usingBlock:^(NSNotification *notification) {
+                [CodePush reloadIntoDeferredUpdate];
+            }];
+    }
+}
+
++ (void)reloadIntoDeferredUpdate
+{
+    @synchronized (self) {
+        if (!hasDecidedPendingUpdateDeferral || !isDeferringPendingUpdate || isAwaitingLoad || ![self isPendingUpdate:nil]) {
+            return;
+        }
+        [self stopDeferringPendingUpdate];
+        [self startNewLoad:YES];
+    }
+
+    CPLog(@"Entered the foreground; reloading into the pending update.");
+    dispatch_async(dispatch_get_main_queue(), ^{
+        RCTTriggerReloadCommandListeners(@"react-native-code-push: Apply deferred update");
+    });
+}
+
+- (BOOL)isCurrentLoad
+{
+    @synchronized ([CodePush class]) {
+        return _loadGeneration == loadGeneration && !isAwaitingLoad;
     }
 }
 
@@ -536,6 +602,12 @@ static NSString *const LatestRollbackCountKey = @"count";
 #endif
     self.paused = YES;
     @synchronized ([CodePush class]) {
+        if (isAwaitingLoad) {
+            // Created by the runtime a new load is replacing, which must leave that load's trial alone.
+            _loadGeneration = NSNotFound;
+            return;
+        }
+        _loadGeneration = loadGeneration;
         if (loadBundleURL) {
             _isFirstRunAfterUpdate = isLoadFirstRunAfterUpdate;
             return;
@@ -678,14 +750,20 @@ static NSString *const LatestRollbackCountKey = @"count";
     // This needs to be async dispatched because the bridge is not set on init
     // when the app first starts, therefore rollbacks will not take effect.
     dispatch_async(dispatch_get_main_queue(), ^{
-        [CodePush stopDeferringPendingUpdate];
-        [CodePush startNewLoad];
+        if (![self isCurrentLoad]) {
+            CPLog(@"Ignoring a restart from a runtime a new load replaced.");
+            return;
+        }
 
         // If the current bundle URL is using http(s), then assume the dev
         // is debugging and therefore, shouldn't be redirected to a local
         // file (since Chrome wouldn't support it). Otherwise, update
         // the current bundle URL to point at the latest update
-        if ([CodePush isUsingTestConfiguration] || ![super.bridge.bundleURL.scheme hasPrefix:@"http"]) {
+        BOOL choosesBundle = [CodePush isUsingTestConfiguration] || ![super.bridge.bundleURL.scheme hasPrefix:@"http"];
+        [CodePush stopDeferringPendingUpdate];
+        [CodePush startNewLoad:choosesBundle];
+
+        if (choosesBundle) {
             [super.bridge setValue:[CodePush bundleURL] forKey:@"bundleURL"];
         }
 
@@ -1058,6 +1136,10 @@ RCT_EXPORT_METHOD(installUpdate:(NSDictionary*)updatePackage
                        resolver:(RCTPromiseResolveBlock)resolve
                        rejecter:(RCTPromiseRejectBlock)reject)
 {
+    if (![self isCurrentLoad]) {
+        return reject(@"-1", @"A new load replaced this runtime before the update could install.", nil);
+    }
+
     NSError *error;
     [CodePushPackage installPackage:updatePackage
                 removePendingUpdate:[[self class] isPendingUpdate:nil]
@@ -1152,7 +1234,7 @@ RCT_EXPORT_METHOD(isFirstRun:(NSString *)packageHash
 RCT_EXPORT_METHOD(notifyApplicationReady:(RCTPromiseResolveBlock)resolve
                                 rejecter:(RCTPromiseRejectBlock)reject)
 {
-    if (![CodePush isDeferringPendingUpdate]) {
+    if ([self isCurrentLoad] && ![CodePush isDeferringPendingUpdate]) {
         [CodePush removePendingUpdate];
     }
     resolve(nil);
