@@ -17,6 +17,8 @@
 
 #import "CodePush.h"
 
+#include <time.h>
+
 @interface CodePush () <RCTBridgeModule, RCTFrameUpdateObserver>
 @end
 
@@ -96,14 +98,27 @@ static BOOL isLoadFirstRunAfterUpdate = NO;
 static NSUInteger loadGeneration = 0;
 static BOOL isAwaitingLoad = NO;
 
-// Observes the foreground once a load defers a pending update. Its observer is the token NSNotificationCenter returns.
+// Observes the next foreground entry, once per process, after a load defers a pending update. Its observer is the token
+// NSNotificationCenter returns.
+static BOOL didObserveForegroundForDeferredUpdate = NO;
 static id deferredUpdateForegroundObserver = nil;
-static NSTimeInterval deferralDecidedAtUptime = 0;
+static NSTimeInterval deferralDecidedAtSeconds = 0;
 
 // How long after the deferral the app may enter the foreground and still reload into the update. A launch into the
 // foreground gets there within moments of the decision; a background launch the user opens later does not, and by then
 // its runtime may be handling the notification the user tapped, which a reload would drop.
 static const NSTimeInterval DeferredUpdateForegroundWindowSeconds = 10;
+
+// Apple only documents backgroundTimeRemaining in the foreground as "suitably large" (DBL_MAX today), while a launch in
+// the background gets an allowance of seconds to minutes. Anything under a day is such an allowance.
+static const NSTimeInterval BackgroundLaunchMaxTimeRemainingSeconds = 24 * 60 * 60;
+
+// Counts time asleep, unlike systemUptime and CACurrentMediaTime: hours of sleep can separate a background launch from
+// the moment the user opens the app.
+static NSTimeInterval MonotonicSeconds(void)
+{
+    return clock_gettime_nsec_np(CLOCK_MONOTONIC) / (NSTimeInterval)NSEC_PER_SEC;
+}
 
 // These values are used to save the NS bundle, name, extension and subdirectory
 // for the JS bundle in the binary.
@@ -376,10 +391,11 @@ static NSString *const LatestRollbackCountKey = @"count";
 + (void)applyDeferredUpdateOnForeground
 {
     @synchronized (self) {
-        if (deferredUpdateForegroundObserver) {
+        if (didObserveForegroundForDeferredUpdate) {
             return;
         }
-        deferralDecidedAtUptime = [[NSProcessInfo processInfo] systemUptime];
+        didObserveForegroundForDeferredUpdate = YES;
+        deferralDecidedAtSeconds = MonotonicSeconds();
         deferredUpdateForegroundObserver =
             [[NSNotificationCenter defaultCenter] addObserverForName:UIApplicationWillEnterForegroundNotification
                                                               object:nil
@@ -393,10 +409,15 @@ static NSString *const LatestRollbackCountKey = @"count";
 + (void)reloadIntoDeferredUpdate
 {
     @synchronized (self) {
+        // Only the first foreground entry after the deferral can be part of the same launch.
+        if (deferredUpdateForegroundObserver) {
+            [[NSNotificationCenter defaultCenter] removeObserver:deferredUpdateForegroundObserver];
+            deferredUpdateForegroundObserver = nil;
+        }
         if (!hasDecidedPendingUpdateDeferral || !isDeferringPendingUpdate || isAwaitingLoad || ![self isPendingUpdate:nil]) {
             return;
         }
-        NSTimeInterval sinceDeferral = [[NSProcessInfo processInfo] systemUptime] - deferralDecidedAtUptime;
+        NSTimeInterval sinceDeferral = MonotonicSeconds() - deferralDecidedAtSeconds;
         if (sinceDeferral > DeferredUpdateForegroundWindowSeconds) {
             CPLog(@"Entered the foreground %.0fs after a background launch; the pending update waits for the next start.",
                   sinceDeferral);
@@ -429,8 +450,15 @@ static NSString *const LatestRollbackCountKey = @"count";
         return NO;
     }
     UIApplication *application = RCTSharedApplication();
-    return application != nil && application.applicationState == UIApplicationStateBackground &&
-           application.backgroundTimeRemaining < DBL_MAX;
+    if (application == nil) {
+        return NO;
+    }
+    UIApplicationState applicationState = application.applicationState;
+    NSTimeInterval backgroundTimeRemaining = application.backgroundTimeRemaining;
+    CPLog(@"Choosing a bundle with an update pending: applicationState %ld, backgroundTimeRemaining %g.",
+          (long)applicationState, backgroundTimeRemaining);
+    return applicationState == UIApplicationStateBackground &&
+           backgroundTimeRemaining < BackgroundLaunchMaxTimeRemainingSeconds;
 }
 
 + (BOOL)needToReportRollback
